@@ -3,7 +3,7 @@
 mod cli;
 mod run;
 use clap::{CommandFactory, Parser};
-use htmlcut_runtime::{Error, ErrorCode};
+use htmlcut_runtime::Error;
 use std::process::ExitCode;
 
 fn main() -> ExitCode {
@@ -13,7 +13,7 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             run::report(&error);
-            ExitCode::from(run::exit_status(error.error) as u8)
+            ExitCode::from(run::exit_status(error.code()) as u8)
         }
     }
 }
@@ -21,10 +21,9 @@ fn guarded(
     action: impl FnOnce() -> Result<(), Error> + std::panic::UnwindSafe,
 ) -> Result<(), Error> {
     std::panic::catch_unwind(action).unwrap_or_else(|_| {
-        Err(Error::new(
-            ErrorCode::Internal,
-            "An internal error interrupted the command.",
-        ))
+        Err(Error::Internal {
+            reason: ("An internal error interrupted the command.").into(),
+        })
     })
 }
 fn entry() -> Result<(), Error> {
@@ -66,8 +65,8 @@ mod tests {
     #[test]
     fn panic_boundary_produces_an_internal_failure() {
         let error = super::guarded(|| panic!("boundary witness")).unwrap_err();
-        assert_eq!(error.error, htmlcut_runtime::ErrorCode::Internal);
-        assert_eq!(crate::run::exit_status(error.error), 6);
+        assert_eq!(error.code(), htmlcut_runtime::ErrorCode::Internal);
+        assert_eq!(crate::run::exit_status(error.code()), 6);
         assert_eq!(
             error.to_json_line().iter().filter(|c| **c == b'\n').count(),
             1
@@ -75,12 +74,15 @@ mod tests {
     }
     #[test]
     fn cancellation_has_its_distinct_terminal_status_without_resource_facts() {
-        let error = htmlcut_runtime::Error::new(
-            htmlcut_runtime::ErrorCode::Cancelled,
-            "The operation was cancelled.",
+        let error = htmlcut_runtime::Error::Cancelled;
+        assert_eq!(crate::run::exit_status(error.code()), 130);
+        assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+        assert!(
+            serde_json::to_value(&error)
+                .unwrap()
+                .get("bound")
+                .cloned()
+                .is_none()
         );
-        assert_eq!(crate::run::exit_status(error.error), 130);
-        assert!(error.limit.is_none());
-        assert!(error.bound.is_none());
     }
 }

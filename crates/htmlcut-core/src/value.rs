@@ -56,10 +56,10 @@ impl Value {
                 .write_all(value.as_bytes())
                 .and_then(|()| output.write_all(b"\n"))
                 .map_err(|_| {
-                    output
-                        .error
-                        .take()
-                        .unwrap_or_else(|| Error::limit("output_bytes", maximum))
+                    output.error.take().unwrap_or_else(|| Error::LimitExceeded {
+                        limit: crate::Limit::OutputBytes,
+                        bound: (maximum).into(),
+                    })
                 })
         };
         match self {
@@ -70,13 +70,7 @@ impl Value {
                     match value {
                         Value::String(value) if !value.contains('\n') => add(value)?,
                         Value::String(_) => {
-                            let mut error = Error::new(
-                                crate::ErrorCode::UnrepresentableOutput,
-                                "Raw lists require one LF-free string per record. Use canonical JSON output.",
-                            );
-                            error.path = Some("$".into());
-                            error.row = Some(vec![index + 1]);
-                            return Err(error);
+                            return Err(Error::UnrepresentableOutput { path: "$".into(), row: Some(index + 1), reason: "Raw lists require one LF-free string per record. Use canonical JSON output.".into() });
                         }
                         Value::Null | Value::List(_) | Value::Record(_) => return Err(raw_shape()),
                     }
@@ -89,10 +83,12 @@ impl Value {
     }
 }
 fn raw_shape() -> Error {
-    Error::new(
-        crate::ErrorCode::UnrepresentableOutput,
-        "Raw export requires a value root containing strings or an absent optional value.",
-    )
+    Error::UnrepresentableOutput {
+        path: "$".into(),
+        row: None,
+        reason: "Raw export requires a value root containing strings or an absent optional value."
+            .into(),
+    }
 }
 pub(crate) fn encode_json(
     value: &impl Serialize,
@@ -110,10 +106,10 @@ pub(crate) fn encode_json(
     serde_json::to_writer(&mut output, value)
         .and_then(|()| output.write_all(b"\n").map_err(serde_json::Error::io))
         .map_err(|_| {
-            output
-                .error
-                .take()
-                .unwrap_or_else(|| Error::limit("output_bytes", maximum))
+            output.error.take().unwrap_or_else(|| Error::LimitExceeded {
+                limit: crate::Limit::OutputBytes,
+                bound: (maximum).into(),
+            })
         })?;
     context.check()?;
     Ok(output.bytes)
@@ -135,7 +131,10 @@ impl OutputSize {
     }
     pub(crate) fn syntax(&mut self, bytes: usize) -> Result<(), Error> {
         if bytes > self.maximum.saturating_sub(self.used) {
-            return Err(Error::limit("output_bytes", self.maximum));
+            return Err(Error::LimitExceeded {
+                limit: crate::Limit::OutputBytes,
+                bound: (self.maximum).into(),
+            });
         }
         self.used += bytes;
         Ok(())
@@ -172,8 +171,8 @@ impl OutputSize {
             error: None,
         };
         if serde_json::to_writer(&mut counter, value).is_err() {
-            return Err(counter.error.unwrap_or_else(|| {
-                Error::new(crate::ErrorCode::Internal, "Result encoding failed.")
+            return Err(counter.error.unwrap_or_else(|| Error::Internal {
+                reason: ("Result encoding failed.").into(),
             }));
         }
         clock.check()
@@ -230,8 +229,14 @@ mod tests {
                 &crate::ExecutionContext::new(None).unwrap(),
             )
             .unwrap_err();
-        assert_eq!(error.error, ErrorCode::LimitExceeded);
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some((expected.len() - 1).into()));
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some((expected.len() - 1).into())
+        );
     }
 }

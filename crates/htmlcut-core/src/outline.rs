@@ -2,7 +2,7 @@
 //! Bounded semantic outlines and their single canonical text encoder.
 use crate::dom::ElementRef;
 use crate::{
-    Document, Error, ErrorCode,
+    Document, Error,
     eval::{Scope, candidates},
     limits::ExecutionContext,
     select::Selector,
@@ -47,7 +47,9 @@ impl OutlineOptions {
             .as_deref()
             .map(|text| {
                 Selector::compile(text, "").map_err(|mut error| {
-                    error.path = None;
+                    if let Error::InvalidSelector { path, .. } = &mut error {
+                        *path = None;
+                    }
                     error
                 })
             })
@@ -126,9 +128,9 @@ impl<'a> TextOutput<'a> {
         }
     }
     fn refusal(&mut self) -> Error {
-        self.error
-            .take()
-            .unwrap_or_else(|| Error::new(ErrorCode::Internal, "Outline encoding failed."))
+        self.error.take().unwrap_or_else(|| Error::Internal {
+            reason: ("Outline encoding failed.").into(),
+        })
     }
     fn piece(&mut self, text: &str) -> Result<(), Error> {
         self.write_all(text.as_bytes()).map_err(|_| self.refusal())
@@ -150,7 +152,10 @@ impl Write for TextOutput<'_> {
             return Err(std::io::Error::other("outline stopped"));
         }
         if bytes.len() > self.maximum.saturating_sub(self.bytes.len()) {
-            self.error = Some(Error::limit("output_bytes", self.maximum));
+            self.error = Some(Error::LimitExceeded {
+                limit: crate::Limit::OutputBytes,
+                bound: (self.maximum).into(),
+            });
             return Err(std::io::Error::other("outline byte allowance exceeded"));
         }
         self.bytes.extend_from_slice(bytes);
@@ -577,7 +582,10 @@ fn identifier(value: &str, maximum: usize, clock: &ExecutionContext) -> Result<S
 #[cfg(test)]
 fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> {
     if line.len() + 1 > maximum.saturating_sub(output.len()) {
-        return Err(Error::limit("output_bytes", maximum));
+        return Err(Error::LimitExceeded {
+            limit: crate::Limit::OutputBytes,
+            bound: (maximum).into(),
+        });
     }
     let clock = ExecutionContext::new(crate::Limits::default().time_limit).unwrap();
     let mut sink = TextOutput::new(maximum, &clock);
@@ -591,6 +599,7 @@ fn append(output: &mut String, line: &str, maximum: usize) -> Result<(), Error> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorCode;
     use crate::{Limits, Source};
     #[test]
     fn caller_constructed_rows_render_omissions_without_representative_attributes() {
@@ -617,7 +626,10 @@ mod tests {
         let context = ExecutionContext::new(None).unwrap();
         assert_eq!(report.render(expected.len(), &context).unwrap(), expected);
         let error = report.render(expected.len() - 1, &context).unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
     }
 
     #[test]
@@ -649,10 +661,19 @@ mod tests {
                 )
             })
             .unwrap_err();
-        assert_eq!(error.error, ErrorCode::LimitExceeded);
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(20.into()));
-        assert_eq!(error.message, "The output_bytes limit of 20 was exceeded.");
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(20.into())
+        );
+        assert_eq!(
+            error.to_string(),
+            "The output_bytes limit of 20 was exceeded."
+        );
     }
 
     #[test]
@@ -704,10 +725,16 @@ mod tests {
                         )
                     })
                     .unwrap_err();
-                assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-                assert_eq!(error.bound, Some(maximum.into()));
                 assert_eq!(
-                    error.message,
+                    serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                    Some("output_bytes")
+                );
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                    Some(maximum.into())
+                );
+                assert_eq!(
+                    error.to_string(),
                     format!("The output_bytes limit of {maximum} was exceeded.")
                 );
             }
@@ -732,8 +759,14 @@ mod tests {
         let clock = ExecutionContext::new(limits.time_limit).unwrap();
         let row = RowView::element(element, 0, 1, false, 0, &clock).unwrap();
         let error = row.write(&mut TextOutput::new(8, &clock)).unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(8.into()));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(8.into())
+        );
     }
 
     #[test]
@@ -758,8 +791,14 @@ mod tests {
             "x"
         );
         let error = identifier(&"x".repeat(1_000_000), 8, &clock).unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(8.into()));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(8.into())
+        );
     }
     #[test]
     fn append_admits_complete_utf8_lines_and_preserves_buffer_on_refusal() {
@@ -774,9 +813,15 @@ mod tests {
         for maximum in [expected.len() - 1, expected.len() - 2] {
             let mut output = initial.to_owned();
             let error = append(&mut output, line, maximum).unwrap_err();
-            assert_eq!(error.error, ErrorCode::LimitExceeded);
-            assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-            assert_eq!(error.bound, Some(maximum.into()));
+            assert_eq!(error.code(), ErrorCode::LimitExceeded);
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                Some("output_bytes")
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                Some(maximum.into())
+            );
             assert_eq!(output, initial);
         }
     }
@@ -902,19 +947,21 @@ mod tests {
             ..OutlineOptions::default()
         };
         assert_eq!(
-            document
-                .outline(
-                    &options,
-                    &limits.execution(),
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
-                )
-                .and_then(|report| report.render(
-                    limits.max_output_bytes,
-                    &crate::ExecutionContext::new((limits).time_limit).unwrap()
-                ))
-                .unwrap_err()
-                .limit
-                .as_deref(),
+            serde_json::to_value(
+                document
+                    .outline(
+                        &options,
+                        &limits.execution(),
+                        &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                    )
+                    .and_then(|report| report.render(
+                        limits.max_output_bytes,
+                        &crate::ExecutionContext::new((limits).time_limit).unwrap()
+                    ))
+                    .unwrap_err()
+            )
+            .unwrap()["limit"]
+                .as_str(),
             Some("output_bytes")
         );
         let limits = Limits::default();
@@ -1001,9 +1048,15 @@ mod tests {
             match (initial, saved) {
                 (Ok(initial), Ok(saved)) => assert_eq!(initial, saved),
                 (Err(initial), Err(saved)) => {
-                    assert_eq!(initial.error, saved.error);
-                    assert_eq!(initial.limit, saved.limit);
-                    assert_eq!(initial.bound, saved.bound);
+                    assert_eq!(initial.code(), saved.code());
+                    assert_eq!(
+                        serde_json::to_value(&initial).unwrap()["limit"],
+                        serde_json::to_value(&saved).unwrap()["limit"]
+                    );
+                    assert_eq!(
+                        serde_json::to_value(&initial).unwrap()["bound"],
+                        serde_json::to_value(&saved).unwrap()["bound"]
+                    );
                 }
                 _ => panic!("initial/render admission differs for {maximum}"),
             }
@@ -1043,10 +1096,7 @@ mod tests {
         let observed = checks.clone();
         let context = ExecutionContext::with_checkpoint(move || {
             if observed.fetch_add(1, Ordering::Relaxed) >= 3 {
-                Err(Error::new(
-                    ErrorCode::Cancelled,
-                    "controlled cancellation during grouping",
-                ))
+                Err(Error::Cancelled)
             } else {
                 Ok(())
             }
@@ -1054,9 +1104,15 @@ mod tests {
         let error = document
             .outline(&options, &limits.execution(), &context)
             .unwrap_err();
-        assert_eq!(error.error, ErrorCode::Cancelled);
-        assert!(error.limit.is_none());
-        assert!(error.bound.is_none());
+        assert_eq!(error.code(), ErrorCode::Cancelled);
+        assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+        assert!(
+            serde_json::to_value(&error)
+                .unwrap()
+                .get("bound")
+                .cloned()
+                .is_none()
+        );
         assert_eq!(checks.load(Ordering::Relaxed), 4);
     }
 }

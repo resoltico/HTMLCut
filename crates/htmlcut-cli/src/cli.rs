@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Command grammar; guide.txt is the complete reader-facing guide.
 use clap::{Args, CommandFactory, Parser, Subcommand};
-use htmlcut_runtime::{Error, ErrorCode, Limits};
+use htmlcut_runtime::{Error, Limits};
 use std::{ffi::OsString, path::PathBuf, time::Duration};
 
 #[derive(Parser)]
@@ -126,11 +126,10 @@ pub(crate) fn argument_error(message: &str) -> Error {
 }
 
 pub(crate) fn parser_error(error: clap::Error) -> Error {
-    Error::new(
-        ErrorCode::InvalidRequest,
-        format!(
+    Error::InvalidRequest {
+        reason: format!(
             "{} Run htmlcut --help for the guide.",
             error.to_string().trim_end()
         ),
-    )
+    }
 }

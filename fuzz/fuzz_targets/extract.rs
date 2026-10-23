@@ -7,7 +7,7 @@ fn admitted<T>(result: Result<T, htmlcut_core::Error>) -> Option<T> {
     match result {
         Ok(value) => Some(value),
         Err(error) => {
-            assert_ne!(error.error, ErrorCode::Internal, "{error:?}");
+            assert_ne!(error.code(), ErrorCode::Internal, "{error:?}");
             None
         }
     }
@@ -61,7 +61,7 @@ fuzz_target!(|bytes: &[u8]| {
             assert!(json.len() <= limits.max_output_bytes);
             match value.export(ExportFormat::Raw, limits.max_output_bytes, &context) {
                 Ok(raw) => assert!(raw.len() <= json.len()),
-                Err(error) => assert_eq!(error.error, ErrorCode::UnrepresentableOutput),
+                Err(error) => assert_eq!(error.code(), ErrorCode::UnrepresentableOutput),
             }
         }
         if let Some(report) =

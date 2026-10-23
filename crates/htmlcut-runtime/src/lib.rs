@@ -9,7 +9,7 @@ mod job;
 mod local_io;
 use htmlcut_core::{Contract, Document, Source};
 pub use htmlcut_core::{
-    DEFAULT_READING, Error, ErrorCode, ErrorFacts, ExportFormat, Limits, OutlineAttribute,
+    DEFAULT_READING, Error, ErrorClass, ErrorCode, ExportFormat, Limit, Limits, OutlineAttribute,
     OutlineOptions, OutlineReport, OutlineRow, QueryCardinality, QuickQuery, Value,
 };
 pub use job::{CancelOutcome, Completion, Job, JobControl, Supervision};
@@ -83,10 +83,7 @@ impl Request {
                 Input::Bytes(_) => false,
             }
         {
-            return Err(Error::new(
-                ErrorCode::InvalidRequest,
-                "Contract stdin requires a distinct HTML source; competing standard input claims are refused before reading.",
-            ));
+            return Err(Error::InvalidRequest { reason: ("Contract stdin requires a distinct HTML source; competing standard input claims are refused before reading.").into() });
         }
         Ok(())
     }
@@ -154,7 +151,10 @@ impl Computed {
 }
 fn admit_bytes(bytes: &[u8], maximum: usize) -> Result<Vec<u8>, Error> {
     if bytes.len() > maximum {
-        return Err(Error::limit("output_bytes", maximum));
+        return Err(Error::LimitExceeded {
+            limit: htmlcut_core::Limit::OutputBytes,
+            bound: (maximum).into(),
+        });
     }
     Ok(bytes.to_vec())
 }
@@ -191,7 +191,7 @@ impl Job {
                     Input::File(path)=>local_io::stdin_alias(path,&context)?,
                     Input::Bytes(_)=>false,
                 };
-                if html_stdin {return Err(Error::new(ErrorCode::InvalidRequest,"Contract standard input requires a distinct HTML source; the path aliases descriptor 0."));}
+                if html_stdin {return Err(Error::InvalidRequest { reason: ("Contract standard input requires a distinct HTML source; the path aliases descriptor 0.").into() });}
             }
             let operation = compile(&request.operation, &context)?;
             let document = if matches!(operation, Compiled::Schema) { None } else {
@@ -270,10 +270,9 @@ impl Job {
         match destination {
             Destination::Stdout => local_io::publish_timed(bytes, None, Some(self)),
             Destination::File(path) => local_io::publish_timed(bytes, Some(path), Some(self)),
-            Destination::Return => Err(Error::new(
-                ErrorCode::InvalidRequest,
-                "Presentation bytes require a stream or file destination.",
-            )),
+            Destination::Return => Err(Error::InvalidRequest {
+                reason: ("Presentation bytes require a stream or file destination.").into(),
+            }),
         }
     }
 }
@@ -290,29 +289,24 @@ fn compile(
     Ok(match operation {
         Operation::Extract { contract, format } => {
             let contract = match contract {
-                ContractInput::Json(text) => match Contract::from_json(text, context) {
-                    Ok(contract) => contract,
-                    Err(mut error) => {
-                        if error.error == ErrorCode::InvalidContract
-                            && text.len() <= Contract::MAX_BYTES
+                ContractInput::Json(text) => {
+                    Contract::from_json(text, context).map_err(|mut error| {
+                        if text.len() <= Contract::MAX_BYTES
                             && serde_json::from_str::<serde_json::Value>(text).is_err()
+                            && std::path::Path::new(text).is_file()
+                            && let Error::InvalidContract { reason, .. } = &mut error
                         {
-                            context.check()?;
-                            if std::path::Path::new(text).is_file() {
-                                error.file = Some(text.clone());
-                            }
+                            reason.push_str(" Read a contract file with --from-file.");
                         }
-                        return Err(error);
-                    }
-                },
+                        error
+                    })?
+                }
                 ContractInput::Quick(query) => Contract::quick(query, context)?,
                 ContractInput::File(path) => {
                     let bytes = local_io::read_file(path, Contract::MAX_BYTES, true, context)?;
-                    let text = std::str::from_utf8(&bytes).map_err(|e| {
-                        Error::new(
-                            ErrorCode::InvalidContract,
-                            format!("The contract is not UTF-8: {e}."),
-                        )
+                    let text = std::str::from_utf8(&bytes).map_err(|e| Error::InvalidContract {
+                        path: None,
+                        reason: format!("The contract is not UTF-8: {e}."),
                     })?;
                     Contract::from_json(text, context)?
                 }
@@ -324,11 +318,9 @@ fn compile(
                         true,
                         context,
                     )?;
-                    let text = std::str::from_utf8(&bytes).map_err(|e| {
-                        Error::new(
-                            ErrorCode::InvalidContract,
-                            format!("The contract is not UTF-8: {e}."),
-                        )
+                    let text = std::str::from_utf8(&bytes).map_err(|e| Error::InvalidContract {
+                        path: None,
+                        reason: format!("The contract is not UTF-8: {e}."),
                     })?;
                     Contract::from_json(text, context)?
                 }

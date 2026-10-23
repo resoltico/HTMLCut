@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0 AND ISC
 //! Deterministic structural text and original-tree readings.
 use crate::dom::Node;
-use crate::{Document, Error, ErrorCode, contract::Reading, eval::Scope, limits::ExecutionContext};
+use crate::{Document, Error, contract::Reading, eval::Scope, limits::ExecutionContext};
 use ego_tree::{NodeId, NodeRef, iter::Edge};
 use html5ever::serialize::{Serialize, SerializeOpts, Serializer, TraversalScope, serialize};
 use std::{collections::HashSet, io};
@@ -19,34 +19,18 @@ pub(crate) fn read(
     let mut sink = ReadingSink::new(reading_limit, output, clock)?;
     let result = match reading {
         Reading::Attr(name) | Reading::Url(name) => {
-            let value = attribute(scope.anchor.value(), name).ok_or_else(|| {
-                Error::new(
-                    ErrorCode::MissingAttribute,
-                    format!(
-                        "The selected <{}> element has no {name:?} attribute.",
-                        scope.anchor.value().name()
-                    ),
-                )
-            })?;
+            let value =
+                attribute(scope.anchor.value(), name).ok_or_else(|| Error::MissingAttribute {
+                    path: String::new(),
+                    row: Vec::new(),
+                })?;
             let result: String = if matches!(reading, Reading::Url(_)) {
                 crate::document::resolve(value, document.base_url.as_ref(), document.query_encoding)
                     .map(|u| u.into())
-                    .map_err(|cause| {
-                        Error::new(
-                            ErrorCode::UnresolvableUrl,
-                            format!(
-                                "URL {:?} cannot be resolved: {}.",
-                                value.chars().take(120).collect::<String>(),
-                                match cause {
-                                    url::ParseError::RelativeUrlWithoutBase =>
-                                        "relative URL requires a usable document base URL"
-                                            .to_owned(),
-                                    url::ParseError::RelativeUrlWithCannotBeABaseBase => "relative URL cannot use an opaque document base; supply a usable base URL".to_owned(),
-                                    cause => format!("malformed URL ({cause})"),
-                                }
-                            ),
-                        )
-                        .observed(value)
+                    .map_err(|_cause| Error::UnresolvableUrl {
+                        path: String::new(),
+                        row: Vec::new(),
+                        value: crate::error::preview(value),
                     })?
             } else {
                 sink.push(value)?;
@@ -303,7 +287,10 @@ impl<'c> ReadingSink<'c> {
         if let Some((remaining, maximum)) = output
             && remaining < 2
         {
-            return Err(Error::limit("output_bytes", maximum));
+            return Err(Error::LimitExceeded {
+                limit: crate::Limit::OutputBytes,
+                bound: (maximum).into(),
+            });
         }
         Ok(sink)
     }
@@ -311,7 +298,10 @@ impl<'c> ReadingSink<'c> {
         for c in text.chars() {
             self.clock.tick()?;
             if c.len_utf8() > self.reading_maximum.saturating_sub(self.value.len()) {
-                return Err(Error::limit("reading_bytes", self.reading_maximum));
+                return Err(Error::LimitExceeded {
+                    limit: crate::Limit::ReadingBytes,
+                    bound: (self.reading_maximum).into(),
+                });
             }
             let bytes = match c {
                 '"' | '\\' | '\n' | '\r' | '\t' | '\u{8}' | '\u{c}' => 2,
@@ -321,7 +311,10 @@ impl<'c> ReadingSink<'c> {
             if let Some((remaining, maximum)) = self.output
                 && bytes > remaining.saturating_sub(self.encoded)
             {
-                return Err(Error::limit("output_bytes", maximum));
+                return Err(Error::LimitExceeded {
+                    limit: crate::Limit::OutputBytes,
+                    bound: (maximum).into(),
+                });
             }
             self.encoded += bytes;
             self.value.push(c);
@@ -516,11 +509,8 @@ fn outer_html(
             e.get_ref()
                 .and_then(|e| e.downcast_ref::<Error>())
                 .cloned()
-                .unwrap_or_else(|| {
-                    Error::new(
-                        ErrorCode::Internal,
-                        format!("HTML serialization failed: {e}."),
-                    )
+                .unwrap_or_else(|| Error::Internal {
+                    reason: format!("HTML serialization failed: {e}."),
                 })
         })?;
     }
@@ -542,6 +532,7 @@ pub(crate) fn read_html(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorCode;
     #[test]
     fn text_after_a_trailing_verbatim_line_feed_returns_to_normal_collapsing() {
         assert_eq!(
@@ -562,8 +553,14 @@ mod tests {
                 assert_eq!(sink.value, "\u{1}");
             } else {
                 let error = result.unwrap_err();
-                assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-                assert_eq!(error.bound, Some(7.into()));
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                    Some("output_bytes")
+                );
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                    Some(7.into())
+                );
                 assert!(
                     sink.value.is_empty(),
                     "refused source must not enter the retained reading"
@@ -828,7 +825,7 @@ mod tests {
                     &crate::ExecutionContext::new((crate::Limits::default()).time_limit).unwrap()
                 )
                 .unwrap_err()
-                .error,
+                .code(),
             ErrorCode::MissingAttribute
         );
         let c = Contract::from_json(

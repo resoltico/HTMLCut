@@ -37,15 +37,17 @@ fn extraction(html: &str, contract: &str, expected: &str) {
         );
         for shorter in [expected.len() - 1, expected.len() - 2] {
             assert_eq!(
-                result
-                    .export(
-                        htmlcut_core::ExportFormat::Json,
-                        shorter,
-                        &htmlcut_core::ExecutionContext::new(None).unwrap()
-                    )
-                    .unwrap_err()
-                    .limit
-                    .as_deref(),
+                serde_json::to_value(
+                    result
+                        .export(
+                            htmlcut_core::ExportFormat::Json,
+                            shorter,
+                            &htmlcut_core::ExecutionContext::new(None).unwrap()
+                        )
+                        .unwrap_err()
+                )
+                .unwrap()["limit"]
+                    .as_str(),
                 Some("output_bytes")
             );
         }
@@ -66,9 +68,15 @@ fn extraction(html: &str, contract: &str, expected: &str) {
                 &htmlcut_core::ExecutionContext::new((limits).time_limit).unwrap(),
             )
             .unwrap_err();
-        assert_eq!(error.error, ErrorCode::LimitExceeded);
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(maximum.into()));
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(maximum.into())
+        );
     }
 }
 
@@ -145,8 +153,14 @@ fn outline(html: &str, options: &OutlineOptions, expected: &str) {
                 )
             })
             .unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(maximum.into()));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(maximum.into())
+        );
     }
 }
 
@@ -273,10 +287,38 @@ fn cardinality_refusals_identify_the_selector_and_complete_range() {
                     .unwrap(),
             )
             .unwrap_err();
-        assert!(error.message.contains(identity), "{}", error.message);
-        assert_eq!(error.path.as_deref(), Some(path));
-        assert_eq!(error.select.as_deref(), selector);
-        assert_eq!(error.expected.as_deref(), Some(expected_range));
-        assert_eq!(error.found, Some(usize::from(selector != Some("b"))));
+        assert!(
+            error.to_string().contains(identity),
+            "{}",
+            error.to_string()
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["path"].as_str(),
+            Some(path)
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["select"].as_str(),
+            selector
+        );
+        assert_eq!(
+            match &error {
+                htmlcut_core::Error::CountMismatch { expected, .. } => Some(expected.to_string()),
+                htmlcut_core::Error::ExpectationFailed {
+                    failure: htmlcut_core::ExpectationFailure::Count { expected, .. },
+                    ..
+                } => Some(expected.to_string()),
+                _ => None,
+            }
+            .as_deref(),
+            Some(expected_range)
+        );
+        assert_eq!(
+            serde_json::to_value(&error)
+                .unwrap()
+                .get("found")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize),
+            Some(usize::from(selector != Some("b")))
+        );
     }
 }

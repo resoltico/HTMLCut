@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Stop requests, commit arbitration and host completion.
+use crate::Error;
 use crate::local_io::{StageOwnership, cleanup_owned_stages};
-use crate::{Error, ErrorCode};
 use std::{
     sync::{Arc, Mutex},
     time::{Duration, Instant},
@@ -73,8 +73,11 @@ impl Shared {
     }
     fn error(&self, stop: Stop) -> Error {
         match stop {
-            Stop::Cancelled => Error::new(ErrorCode::Cancelled, "The operation was cancelled."),
-            Stop::Deadline => Error::limit("time", self.duration.unwrap().as_secs_f64()),
+            Stop::Cancelled => Error::Cancelled,
+            Stop::Deadline => Error::LimitExceeded {
+                limit: htmlcut_core::Limit::Time,
+                bound: serde_json::Number::from_f64(self.duration.unwrap().as_secs_f64()).unwrap(),
+            },
         }
     }
     fn check(&self) -> Result<(), Error> {
@@ -89,26 +92,13 @@ impl Shared {
         match disposition {
             Ok(()) => Ok(()),
             Err(Some(stop)) => Err(self.error(stop)),
-            Err(None) => Err(Error::new(
-                ErrorCode::InvalidRequest,
-                "This job has already delivered or finished.",
-            )),
+            Err(None) => Err(Error::InvalidRequest {
+                reason: ("This job has already delivered or finished.").into(),
+            }),
         }
     }
     fn supervised_error(&self, stop: Stop) -> Error {
-        let candidate = self.staging.try_lock().ok().and_then(|records| {
-            records
-                .last()
-                .map(|record| record.candidate_path().to_path_buf())
-        });
-        let mut error = self.error(stop);
-        if let Some(path) = candidate {
-            error.detail = Some(format!(
-                "Staging candidate {}; extraordinary blocked filesystem calls can leave residue.",
-                path.display()
-            ));
-        }
-        error
+        self.error(stop)
     }
 }
 impl JobControl {
@@ -174,12 +164,11 @@ impl Job {
     pub fn new(duration: Option<Duration>) -> Result<Self, Error> {
         let deadline = duration
             .map(|d| {
-                Instant::now().checked_add(d).ok_or_else(|| {
-                    Error::new(
-                        ErrorCode::InvalidRequest,
-                        "The deadline cannot be represented.",
-                    )
-                })
+                Instant::now()
+                    .checked_add(d)
+                    .ok_or_else(|| Error::InvalidRequest {
+                        reason: ("The deadline cannot be represented.").into(),
+                    })
             })
             .transpose()?;
         Ok(Self {
@@ -229,10 +218,9 @@ impl Job {
             (Phase::Active, Some(stop)) | (Phase::SupervisorOwned(stop), _) => {
                 Err(self.control.0.error(stop))
             }
-            (Phase::CommitOwned | Phase::Completed, _) => Err(Error::new(
-                ErrorCode::InvalidRequest,
-                "A job may deliver only once.",
-            )),
+            (Phase::CommitOwned | Phase::Completed, _) => Err(Error::InvalidRequest {
+                reason: ("A job may deliver only once.").into(),
+            }),
         }
     }
     pub(crate) fn finish<T>(&self, result: Result<T, Error>) -> Completion<T> {
@@ -252,10 +240,9 @@ impl Job {
         match (phase, stop) {
             (Phase::Active, Some(stop)) => Completion::Finished(Err(self.control.0.error(stop))),
             (Phase::Active, None) | (Phase::CommitOwned, _) => Completion::Finished(result),
-            (Phase::Completed, _) => Completion::Finished(Err(Error::new(
-                ErrorCode::InvalidRequest,
-                "A job may finish only once.",
-            ))),
+            (Phase::Completed, _) => Completion::Finished(Err(Error::InvalidRequest {
+                reason: ("A job may finish only once.").into(),
+            })),
             (Phase::SupervisorOwned(stop), _) => Completion::Supervised(self.control.0.error(stop)),
         }
     }
@@ -265,10 +252,9 @@ impl Job {
             action()
         }))
         .unwrap_or_else(|_| {
-            Err(Error::new(
-                ErrorCode::Internal,
-                "An internal error interrupted the operation.",
-            ))
+            Err(Error::Internal {
+                reason: ("An internal error interrupted the operation.").into(),
+            })
         });
         self.control.0.cleanup(Duration::from_millis(50));
         #[cfg(test)]
@@ -289,10 +275,9 @@ impl Drop for Job {
         }
         self.control.0.cleanup(Duration::from_millis(50));
         if phase == Phase::Active {
-            let _ = self.finish::<()>(Err(Error::new(
-                ErrorCode::Internal,
-                "The operation owner was dropped before completion.",
-            )));
+            let _ = self.finish::<()>(Err(Error::Internal {
+                reason: ("The operation owner was dropped before completion.").into(),
+            }));
         }
     }
 }
@@ -300,13 +285,14 @@ impl Drop for Job {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorCode;
     fn expired(job: &mut Job) {
         Arc::get_mut(&mut job.control.0).unwrap().deadline =
             Some(Instant::now() - Duration::from_secs(1));
     }
     fn code<T>(result: Completion<T>) -> ErrorCode {
         match result {
-            Completion::Finished(Err(error)) | Completion::Supervised(error) => error.error,
+            Completion::Finished(Err(error)) | Completion::Supervised(error) => error.code(),
             Completion::Finished(Ok(_)) => panic!("expected refusal"),
         }
     }
@@ -319,18 +305,21 @@ mod tests {
         let mut late = Job::new(Some(Duration::from_secs(10))).unwrap();
         expired(&mut late);
         late.control.cancel();
-        let Completion::Finished(Err(error)) =
-            late.finish::<()>(Err(Error::new(ErrorCode::Internal, "late failure")))
-        else {
+        let Completion::Finished(Err(error)) = late.finish::<()>(Err(Error::Internal {
+            reason: ("late failure").into(),
+        })) else {
             panic!()
         };
-        assert_eq!(error.limit.as_deref(), Some("time"));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("time")
+        );
         let job = Job::new(None).unwrap();
         assert_eq!(
-            code(job.finish::<()>(Err(Error::new(
-                ErrorCode::InputUnreadable,
-                "ordinary failure"
-            )))),
+            code(job.finish::<()>(Err(Error::InputUnreadable {
+                file: "test".into(),
+                detail: "ordinary failure".into()
+            }))),
             ErrorCode::InputUnreadable
         );
     }
@@ -349,10 +338,10 @@ mod tests {
             let result = if success {
                 Ok(())
             } else {
-                Err(Error::new(
-                    ErrorCode::OutputUnwritable,
-                    "actual rename failure",
-                ))
+                Err(Error::OutputUnwritable {
+                    file: "test".into(),
+                    detail: "actual rename failure".into(),
+                })
             };
             match job.finish(result) {
                 Completion::Finished(result) => assert_eq!(result.is_ok(), success),
@@ -464,11 +453,11 @@ mod tests {
                     let Supervision::Claimed(error) = control.supervise() else {
                         panic!("supervisor did not own expiry")
                     };
-                    assert_eq!(error.error, expected);
+                    assert_eq!(error.code(), expected);
                     release_sender.send(()).unwrap();
                     let completion = done_receiver.recv_timeout(Duration::from_secs(2)).unwrap();
                     assert!(
-                        matches!(completion,Completion::Supervised(error) if error.error==expected)
+                        matches!(completion,Completion::Supervised(error) if error.code()==expected)
                     );
                     thread.join().unwrap();
                     assert!(matches!(
@@ -501,10 +490,10 @@ mod tests {
     fn ordinary_failure_completed_before_expiry_keeps_its_terminal_owner() {
         let mut job = Job::new(Some(Duration::from_secs(10))).unwrap();
         assert_eq!(
-            code(job.finish::<()>(Err(Error::new(
-                ErrorCode::OutputUnwritable,
-                "native stream failed"
-            )))),
+            code(job.finish::<()>(Err(Error::OutputUnwritable {
+                file: "test".into(),
+                detail: "native stream failed".into()
+            }))),
             ErrorCode::OutputUnwritable
         );
         expired(&mut job);

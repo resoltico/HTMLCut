@@ -4,5 +4,5 @@
  "path": "$",
  "select": "article.product",
  "found": 3,
- "expected": "4.."
+ "expected": {"min":4}
 }

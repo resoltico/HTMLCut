@@ -218,7 +218,10 @@ fn prepared_metadata_survives_source_removal_failed_save_and_fresh_retry() {
         limits,
     ))
     .unwrap_err();
-    assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+        Some("output_bytes")
+    );
     assert_eq!(std::fs::read(&destination).unwrap(), b"old destination");
     assert_eq!(inventory(), before);
     completed(Job::new(None).unwrap().save(

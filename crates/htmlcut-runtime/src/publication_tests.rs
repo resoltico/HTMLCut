@@ -43,7 +43,7 @@ fn interrupted_input_retries_without_losing_bytes_and_rechecks_cancellation() {
         };
         let result = read(&mut reader, 4, Path::new("input"), false, &job.context());
         if cancelled {
-            assert_eq!(result.unwrap_err().error, ErrorCode::Cancelled);
+            assert_eq!(result.unwrap_err().code(), ErrorCode::Cancelled);
             assert_eq!(reader.attempts, 1);
             assert_eq!(reader.bytes.position(), 0);
         } else {
@@ -93,7 +93,7 @@ fn interrupted_output_retries_partial_writes_and_rechecks_cancellation() {
                     .unwrap()
                     .downcast_ref::<Error>()
                     .unwrap()
-                    .error,
+                    .code(),
                 ErrorCode::Cancelled
             );
             assert_eq!(writer.attempts, 1);
@@ -394,7 +394,7 @@ fn competing_stdin_arguments_keep_priority_over_a_zero_deadline() {
         };
         let error = request.validate_syntax().unwrap_err();
         report(&error);
-        std::process::exit(exit_status(error.error));
+        std::process::exit(exit_status(error.code()));
     }
     let sources = vec!["-"];
     #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -444,7 +444,7 @@ fn publication_revalidation_child() {
     };
     if let Err(error) = publish(b"complete-private-result", Some(Path::new(&destination))) {
         report(&error);
-        std::process::exit(exit_status(error.error));
+        std::process::exit(exit_status(error.code()));
     }
 }
 
@@ -459,8 +459,11 @@ fn existing_unwritable_output_reports_the_native_admission_failure() {
     let native = OpenOptions::new().write(true).open(&target).unwrap_err();
     assert_eq!(native.kind(), io::ErrorKind::PermissionDenied);
     let error = publish(b"replacement", Some(&target)).unwrap_err();
-    assert_eq!(error.error, ErrorCode::OutputUnwritable);
-    assert_eq!(error.detail.as_deref(), Some(native.to_string().as_str()));
+    assert_eq!(error.code(), ErrorCode::OutputUnwritable);
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["detail"].as_str(),
+        Some(native.to_string().as_str())
+    );
     assert_eq!(std::fs::read(&target).unwrap(), b"preserve");
     assert_eq!(std::fs::read_dir(root.path()).unwrap().count(), 1);
 }
@@ -615,7 +618,7 @@ fn publication_phase_child() {
         crate::Completion::Finished(Ok(_)) => (),
         crate::Completion::Finished(Err(error)) | crate::Completion::Supervised(error) => {
             report(&error);
-            std::process::exit(exit_status(error.error));
+            std::process::exit(exit_status(error.code()));
         }
     }
 }
@@ -772,12 +775,17 @@ fn output_under_a_regular_file_refuses_and_preserves_the_parent() {
         assert_eq!(error.raw_os_error(), expected.raw_os_error());
     }
     let error = publish(b"new", Some(&child)).unwrap_err();
-    assert_eq!(error.error, ErrorCode::OutputUnwritable);
+    assert_eq!(error.code(), ErrorCode::OutputUnwritable);
     assert_eq!(
-        error.file.as_deref(),
+        serde_json::to_value(&error).unwrap()["file"].as_str(),
         Some(child.to_string_lossy().as_ref())
     );
-    assert!(error.detail.is_some());
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("detail")
+            .is_some()
+    );
     assert_eq!(std::fs::read(file).unwrap(), b"unchanged");
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 1);
 }
@@ -815,9 +823,15 @@ fn output_ignores_only_broken_pipe_from_writing_or_flushing() {
         );
         writer.kind = io::ErrorKind::PermissionDenied;
         let error = write_output(&mut writer, b"complete", path, None).unwrap_err();
-        assert_eq!(error.error, ErrorCode::OutputUnwritable);
-        assert_eq!(error.file.as_deref(), Some("output.json"));
-        assert_eq!(error.detail.as_deref(), Some("destination failure"));
+        assert_eq!(error.code(), ErrorCode::OutputUnwritable);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["file"].as_str(),
+            Some("output.json")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["detail"].as_str(),
+            Some("destination failure")
+        );
     }
 }
 
@@ -892,8 +906,13 @@ fn publication_replaces_a_complete_file_and_cleans_failed_staging() {
     let target_directory = directory.path().join("destination");
     std::fs::create_dir(&target_directory).unwrap();
     let error = publish(b"new", Some(&target_directory)).unwrap_err();
-    assert_eq!(error.error, ErrorCode::OutputUnwritable);
-    assert!(error.detail.is_some());
+    assert_eq!(error.code(), ErrorCode::OutputUnwritable);
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("detail")
+            .is_some()
+    );
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 2);
 }
 #[test]
@@ -916,7 +935,7 @@ fn cooperative_checks_stop_short_reads_and_writes_before_the_next_call() {
         calls: 0,
     };
     let error = read(&mut reader, 8, Path::new("input"), false, &job.context()).unwrap_err();
-    assert_eq!(error.error, ErrorCode::Cancelled);
+    assert_eq!(error.code(), ErrorCode::Cancelled);
     assert_eq!(reader.calls, 1);
     struct Writer {
         control: crate::JobControl,
@@ -939,10 +958,16 @@ fn cooperative_checks_stop_short_reads_and_writes_before_the_next_call() {
     };
     let error =
         write_output(&mut writer, b"complete", Path::new("output"), Some(&job)).unwrap_err();
-    assert_eq!(error.error, ErrorCode::Cancelled);
+    assert_eq!(error.code(), ErrorCode::Cancelled);
     assert_eq!(writer.calls, 1);
-    assert!(error.limit.is_none());
-    assert!(error.bound.is_none());
+    assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("bound")
+            .cloned()
+            .is_none()
+    );
 }
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
@@ -967,12 +992,12 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
         let context = htmlcut_core::ExecutionContext::with_checkpoint(move || {
             if read_stop.load(Ordering::Relaxed) {
                 if deadline {
-                    Err(Error::limit("time", 0.0))
+                    Err(Error::LimitExceeded {
+                        limit: htmlcut_core::Limit::Time,
+                        bound: serde_json::Number::from_f64(0.0_f64).unwrap(),
+                    })
                 } else {
-                    Err(Error::new(
-                        ErrorCode::Cancelled,
-                        "controlled cancellation between links",
-                    ))
+                    Err(Error::Cancelled)
                 }
             } else {
                 Ok(())
@@ -990,7 +1015,7 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
         .unwrap_err();
         assert_eq!(lookups.load(Ordering::Relaxed), 2);
         assert_eq!(
-            error.error,
+            error.code(),
             if deadline {
                 ErrorCode::LimitExceeded
             } else {
@@ -998,8 +1023,14 @@ fn link_resolution_preserves_stop_errors_between_links_without_a_supervisor() {
             }
         );
         if !deadline {
-            assert!(error.limit.is_none());
-            assert!(error.bound.is_none());
+            assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+            assert!(
+                serde_json::to_value(&error)
+                    .unwrap()
+                    .get("bound")
+                    .cloned()
+                    .is_none()
+            );
         }
     }
 }
@@ -1198,7 +1229,7 @@ mod windows_namespace {
                     "{suffix:?} link={through_link} admitted a regular file"
                 );
                 let error = result.unwrap_err();
-                assert_eq!(error.error, ErrorCode::OutputUnwritable);
+                assert_eq!(error.code(), ErrorCode::OutputUnwritable);
                 assert!(!target.exists());
                 if let Some(link) = link {
                     assert_eq!(std::fs::read_link(&path).unwrap(), link);

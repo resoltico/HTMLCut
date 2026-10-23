@@ -10,7 +10,9 @@ use std::{
     time::{Duration, Instant},
 };
 fn invalid_request(message: &str) -> Error {
-    Error::new(ErrorCode::InvalidRequest, message)
+    Error::InvalidRequest {
+        reason: (message).into(),
+    }
 }
 pub(crate) fn input(
     allow_terminal: bool,
@@ -64,12 +66,15 @@ pub(crate) fn read(
         }
         if count > remaining {
             return Err(if contract {
-                Error::new(
-                    ErrorCode::InvalidContract,
-                    format!("The contract exceeds the {maximum}-byte grammar bound."),
-                )
+                Error::InvalidContract {
+                    path: None,
+                    reason: format!("The contract exceeds the {maximum}-byte grammar bound."),
+                }
             } else {
-                Error::limit("input_bytes", maximum)
+                Error::LimitExceeded {
+                    limit: htmlcut_core::Limit::InputBytes,
+                    bound: (maximum).into(),
+                }
             });
         }
         bytes.extend_from_slice(&buffer[..count]);
@@ -84,10 +89,11 @@ fn io_error(code: ErrorCode, path: &Path, detail: io::Error) -> Error {
     }
     let file = path.to_string_lossy().into_owned();
     let detail = detail.to_string();
-    let mut error = Error::new(code, format!("File {file:?}: {detail}."));
-    error.file = Some(file);
-    error.detail = Some(detail);
-    error
+    match code {
+        ErrorCode::InputUnreadable => Error::InputUnreadable { file, detail },
+        ErrorCode::OutputUnwritable => Error::OutputUnwritable { file, detail },
+        _ => unreachable!("I/O code required"),
+    }
 }
 fn write_all_timed(
     writer: &mut impl Write,
@@ -597,9 +603,6 @@ pub(crate) struct StageOwnership {
     deletion_handle: std::sync::Mutex<Option<File>>,
 }
 impl StageOwnership {
-    pub(crate) fn candidate_path(&self) -> &Path {
-        &self.path
-    }
     fn cleanup(&self) {
         #[cfg(any(test, feature = "instrumented-tests"))]
         if self.result_stage {

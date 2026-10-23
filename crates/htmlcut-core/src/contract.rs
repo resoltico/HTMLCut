@@ -4,7 +4,7 @@ use crate::limits::{
     MAX_ATTRIBUTE_NAME_CHARS, MAX_CONTRACT_BYTES, MAX_CONTRACT_NODES, MAX_DECLARED_COUNT,
     MAX_ENTRIES, MAX_FIELD_NAME_CHARS, MAX_PATTERN_BYTES, MAX_RECORD_DEPTH, MAX_RECORD_FIELDS,
 };
-use crate::{Error, ErrorCode, select::Selector};
+use crate::{Error, select::Selector};
 use regex::{Regex, RegexBuilder};
 use serde_json::{Map, Value as Json};
 use std::collections::BTreeMap;
@@ -111,7 +111,7 @@ impl Contract {
         // Count escaped input as well as source strings before compiler admission.
         let mut size = crate::value::OutputSize::new(MAX_CONTRACT_BYTES);
         size.value(&value, &(context).clone()).map_err(|error| {
-            if error.limit.as_deref() == Some("output_bytes") {
+            if serde_json::to_value(&error).unwrap()["limit"].as_str() == Some("output_bytes") {
                 invalid(None, "The quick query exceeds the contract byte bound.")
             } else {
                 error
@@ -146,10 +146,11 @@ impl Contract {
     /// Admits export shape before acquiring any document bytes.
     pub fn admit_export(&self, format: crate::ExportFormat) -> Result<(), Error> {
         if format == crate::ExportFormat::Raw && self.produces_records() {
-            return Err(Error::new(
-                ErrorCode::UnrepresentableOutput,
-                "Raw export requires a value root, not a record root.",
-            ));
+            return Err(Error::UnrepresentableOutput {
+                path: "$".into(),
+                row: None,
+                reason: "Raw export requires a value root, not a record root.".into(),
+            });
         }
         Ok(())
     }
@@ -160,10 +161,9 @@ impl Contract {
 }
 
 fn invalid(path: Option<&str>, message: &str) -> Error {
-    let e = Error::new(ErrorCode::InvalidContract, message);
-    match path {
-        Some(path) => e.at(path),
-        None => e,
+    Error::InvalidContract {
+        path: path.map(Into::into),
+        reason: message.into(),
     }
 }
 fn pattern_count(value: &Json) -> usize {
@@ -302,13 +302,29 @@ impl Compiler<'_> {
                 "equals and pattern are mutually exclusive.",
             ));
         }
-        let pattern = text.map(|text| {
-            let location = format!("{path}.pattern");
-            if text.len() > MAX_PATTERN_BYTES { return Err(invalid(Some(&location), &format!("The pattern exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."))); }
-            RegexBuilder::new(&text).size_limit(self.regex_bytes).dfa_size_limit(self.regex_bytes).nest_limit(64)
-                .build().map_err(|e| Error::new(ErrorCode::InvalidPattern,
-                    format!("Invalid regular expression or exceeded compiled-size bound {}: {e}.", self.regex_bytes)).at(&location))
-        }).transpose()?;
+        let pattern = text
+            .map(|text| {
+                let location = format!("{path}.pattern");
+                if text.len() > MAX_PATTERN_BYTES {
+                    return Err(invalid(
+                        Some(&location),
+                        &format!("The pattern exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
+                    ));
+                }
+                RegexBuilder::new(&text)
+                    .size_limit(self.regex_bytes)
+                    .dfa_size_limit(self.regex_bytes)
+                    .nest_limit(64)
+                    .build()
+                    .map_err(|e| Error::InvalidPattern {
+                        path: location.clone(),
+                        reason: format!(
+                            "Invalid regular expression or exceeded compiled-size bound {}: {e}.",
+                            self.regex_bytes
+                        ),
+                    })
+            })
+            .transpose()?;
         Ok(Check { equals, pattern })
     }
     fn predicates(
@@ -543,7 +559,7 @@ mod tests {
             cardinality: crate::QueryCardinality::One,
         };
         let error = super::Contract::quick(&query, &context).err().unwrap();
-        assert_eq!(error.error, crate::ErrorCode::InvalidContract);
+        assert_eq!(error.code(), crate::ErrorCode::InvalidContract);
         // Allow ordinary admission checks. Escaping this input before refusing
         // would require hundreds of the context's 1024-iteration checkpoints.
         assert!(
@@ -552,6 +568,7 @@ mod tests {
         );
     }
     use super::*;
+    use crate::ErrorCode;
     fn compile(value: Json) -> Result<Contract, Error> {
         Contract::from_json(
             &serde_json::to_string(&value).unwrap(),
@@ -560,9 +577,9 @@ mod tests {
     }
     fn refused(value: Json, message: &str) {
         let error = compile(value).err().expect("grammar must refuse");
-        assert!(error.message.contains(message), "{}", error.message);
+        assert!(error.to_string().contains(message), "{}", error.to_string());
         assert!(matches!(
-            error.error,
+            error.code(),
             ErrorCode::InvalidContract | ErrorCode::InvalidSelector | ErrorCode::InvalidPattern
         ));
     }
@@ -576,7 +593,7 @@ mod tests {
             Contract::from_json(&text, &crate::ExecutionContext::new(None).unwrap())
                 .err()
                 .unwrap()
-                .message
+                .to_string()
                 .contains("262144")
         );
     }
@@ -678,8 +695,12 @@ mod tests {
                     assert!(actual.is_ok(), "{text}");
                 } else {
                     let error = actual.err().unwrap_or_else(|| panic!("admitted {text}"));
-                    assert_eq!(error.error, ErrorCode::InvalidContract, "{text}");
-                    assert_eq!(error.path.as_deref(), Some(path), "{text}");
+                    assert_eq!(error.code(), ErrorCode::InvalidContract, "{text}");
+                    assert_eq!(
+                        serde_json::to_value(&error).unwrap()["path"].as_str(),
+                        Some(path),
+                        "{text}"
+                    );
                 }
             }
         }
@@ -782,14 +803,17 @@ mod tests {
         let empty = serde_json::json!({"fields":{}});
         assert!(!validator.is_valid(&empty));
         assert_eq!(
-            compile(empty).err().unwrap().path.as_deref(),
+            serde_json::to_value(compile(empty).err().unwrap()).unwrap()["path"].as_str(),
             Some("$.fields")
         );
         for read in ["attr:title", "url:href"] {
             let error = compile(serde_json::json!({"read":read,"exclude":[]}))
                 .err()
                 .unwrap();
-            assert_eq!(error.path.as_deref(), Some("$.exclude"));
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
+                Some("$.exclude")
+            );
         }
         assert!(validator.is_valid(&serde_json::json!({"fields":{"title":"h1"}})));
     }
@@ -799,18 +823,21 @@ mod tests {
             let error = compile(serde_json::json!({"select":"a","where":[{"read":read}]}))
                 .err()
                 .unwrap();
-            assert_eq!(error.path.as_deref(), Some("$.where[0].read"));
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
+                Some("$.where[0].read")
+            );
             assert!(
                 error
-                    .message
+                    .to_string()
                     .ends_with("A predicate reads text, text-content or attr:NAME.")
             );
-            assert!(!error.message.contains("Readings are"));
+            assert!(!error.to_string().contains("Readings are"));
         }
         let error = compile(serde_json::json!({"read":"bogus"})).err().unwrap();
         assert!(
             error
-                .message
+                .to_string()
                 .ends_with("Readings are text, text-content, outer-html, attr:NAME and url:NAME.")
         );
     }
@@ -828,8 +855,8 @@ mod tests {
             serde_json::json!({"min":2,"max":1,"match":"all"}),
         ] {
             let error = compile(value).err().expect("invalid grammar admitted");
-            assert_eq!(error.error, ErrorCode::InvalidContract);
-            assert!(error.path.is_some());
+            assert_eq!(error.code(), ErrorCode::InvalidContract);
+            assert!(serde_json::to_value(&error).unwrap().get("path").is_some());
         }
     }
 
@@ -851,8 +878,13 @@ mod tests {
         }))
         .err()
         .expect("three expensive patterns must exceed their shared allowance");
-        assert_eq!(error.error, ErrorCode::InvalidPattern);
-        assert!(error.path.as_deref().unwrap().ends_with(".pattern"));
+        assert_eq!(error.code(), ErrorCode::InvalidPattern);
+        assert!(
+            serde_json::to_value(&error).unwrap()["path"]
+                .as_str()
+                .unwrap()
+                .ends_with(".pattern")
+        );
     }
 
     #[test]
@@ -866,7 +898,7 @@ mod tests {
             "expect":[{"pattern":"a{40000}"}],
             "fields":{"first":{"pattern":"a{40000}"},"nested":{"fields":{"second":{"pattern":"a{40000}"}}}}
         })).err().expect("nested fields must share the same allowance as predicates");
-        assert_eq!(error.error, ErrorCode::InvalidPattern);
+        assert_eq!(error.code(), ErrorCode::InvalidPattern);
     }
 
     #[test]
@@ -878,8 +910,11 @@ mod tests {
                 let error = compile(serde_json::json!({"read":format!("{prefix}{name}")}))
                     .err()
                     .expect("invalid attribute name admitted");
-                assert_eq!(error.error, ErrorCode::InvalidContract);
-                assert_eq!(error.path.as_deref(), Some("$.read"));
+                assert_eq!(error.code(), ErrorCode::InvalidContract);
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap()["path"].as_str(),
+                    Some("$.read")
+                );
             }
             for name in ["data-price", "xlink:href", "viewBox", "é"] {
                 assert!(compile(serde_json::json!({"read":format!("{prefix}{name}")})).is_ok());
@@ -901,9 +936,9 @@ mod tests {
             let error = compile(value)
                 .err()
                 .expect("inverted predicate range admitted");
-            assert_eq!(error.error, ErrorCode::InvalidContract);
+            assert_eq!(error.code(), ErrorCode::InvalidContract);
             assert_eq!(
-                error.path.as_deref(),
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
                 Some(format!("$.{member}[0]").as_str())
             );
         }
@@ -919,8 +954,11 @@ mod tests {
             let error = compile(value.clone())
                 .err()
                 .expect("selection member without selection admitted");
-            assert_eq!(error.error, ErrorCode::InvalidContract);
-            assert_eq!(error.path.as_deref(), Some("$"));
+            assert_eq!(error.code(), ErrorCode::InvalidContract);
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
+                Some("$")
+            );
             value["select"] = serde_json::json!("p");
             assert!(compile(value).is_ok());
         }

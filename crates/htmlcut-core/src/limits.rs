@@ -72,17 +72,19 @@ impl ExecutionContext {
         let started = std::time::Instant::now();
         let deadline = limit
             .map(|limit| {
-                started.checked_add(limit).ok_or_else(|| {
-                    crate::Error::new(
-                        crate::ErrorCode::InvalidRequest,
-                        "The deadline cannot be represented.",
-                    )
-                })
+                started
+                    .checked_add(limit)
+                    .ok_or_else(|| crate::Error::InvalidRequest {
+                        reason: ("The deadline cannot be represented.").into(),
+                    })
             })
             .transpose()?;
         Ok(Self::with_checkpoint(move || {
             if deadline.is_some_and(|deadline| std::time::Instant::now() >= deadline) {
-                return Err(crate::Error::limit("time", limit.unwrap().as_secs_f64()));
+                return Err(crate::Error::LimitExceeded {
+                    limit: crate::Limit::Time,
+                    bound: serde_json::Number::from_f64(limit.unwrap().as_secs_f64()).unwrap(),
+                });
             }
             Ok(())
         }))
@@ -137,7 +139,10 @@ mod tests {
     #[test]
     fn context_deadline_is_absolute_and_overflow_is_a_request_error() {
         let context = ExecutionContext::new(Some(std::time::Duration::ZERO)).unwrap();
-        assert_eq!(context.check().unwrap_err().limit.as_deref(), Some("time"));
+        assert_eq!(
+            serde_json::to_value(context.check().unwrap_err()).unwrap()["limit"].as_str(),
+            Some("time")
+        );
         assert!(ExecutionContext::new(Some(std::time::Duration::MAX)).is_err());
         let clock = context.clone();
         assert!((0..1024).any(|_| clock.tick().is_err()));

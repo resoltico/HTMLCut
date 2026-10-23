@@ -179,7 +179,10 @@ impl Builder {
             return None;
         }
         if self.html.tree.nodes().len() >= self.maximum {
-            self.error = Some(Error::limit("nodes", self.maximum));
+            self.error = Some(Error::LimitExceeded {
+                limit: crate::Limit::Nodes,
+                bound: (self.maximum).into(),
+            });
             return None;
         }
         let id = self.html.tree.orphan(node()).id();
@@ -198,7 +201,10 @@ impl Builder {
         let mut updates = Vec::new();
         while let Some((id, d)) = pending.pop() {
             if d > crate::limits::MAX_DOM_DEPTH {
-                self.error = Some(Error::limit("depth", crate::limits::MAX_DOM_DEPTH));
+                self.error = Some(Error::LimitExceeded {
+                    limit: crate::Limit::Depth,
+                    bound: (crate::limits::MAX_DOM_DEPTH).into(),
+                });
                 return false;
             }
             if !self.check() {
@@ -519,7 +525,10 @@ mod tests {
         for _ in 0..1024 {
             sink.create_comment("before-refusal".into());
         }
-        assert_eq!(sink.refusal().unwrap().limit.as_deref(), Some("time"));
+        assert_eq!(
+            serde_json::to_value(sink.refusal().unwrap()).unwrap()["limit"].as_str(),
+            Some("time")
+        );
         let admitted = sink.node_count();
         assert!(admitted <= 1024);
         let first = sink.create_element(
@@ -556,7 +565,10 @@ mod tests {
             sink.create_comment("after-refusal".into());
         }
         assert_eq!(sink.node_count(), admitted);
-        assert_eq!(sink.finish().unwrap_err().limit.as_deref(), Some("time"));
+        assert_eq!(
+            serde_json::to_value(sink.finish().unwrap_err()).unwrap()["limit"].as_str(),
+            Some("time")
+        );
     }
 
     #[test]
@@ -574,7 +586,10 @@ mod tests {
             );
             match expected {
                 None => assert!(result.is_ok()),
-                Some(limit) => assert_eq!(result.err().unwrap().limit.as_deref(), Some(limit)),
+                Some(limit) => assert_eq!(
+                    serde_json::to_value(result.err().unwrap()).unwrap()["limit"].as_str(),
+                    Some(limit)
+                ),
             }
         }
     }
@@ -620,8 +635,14 @@ mod tests {
             let Err(error) = sink.finish() else {
                 panic!("an existing descendant beyond depth1024 must refuse");
             };
-            assert_eq!(error.limit.as_deref(), Some("depth"));
-            assert_eq!(error.bound, Some(1024.into()));
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                Some("depth")
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                Some(1024.into())
+            );
         }
     }
 

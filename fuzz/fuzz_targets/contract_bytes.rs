@@ -8,6 +8,6 @@ fuzz_target!(|bytes: &[u8]| {
             &htmlcut_core::ExecutionContext::new(None).unwrap(),
         )
     {
-        assert_ne!(error.error, htmlcut_core::ErrorCode::Internal, "{error:?}");
+        assert_ne!(error.code(), htmlcut_core::ErrorCode::Internal, "{error:?}");
     }
 });

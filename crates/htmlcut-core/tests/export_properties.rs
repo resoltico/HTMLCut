@@ -62,18 +62,26 @@ fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
         policy.max_output_bytes -= 1;
         let error = document.extract(&contract, &policy, &context).unwrap_err();
         assert_eq!(
-            error.error,
+            error.code(),
             ErrorCode::LimitExceeded,
             "one-below case {case}"
         );
-        assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-        assert_eq!(error.bound, Some(policy.max_output_bytes.into()));
         assert_eq!(
-            value
-                .export(ExportFormat::Json, json.len() - 1, &context)
-                .unwrap_err()
-                .limit
-                .as_deref(),
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("output_bytes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(policy.max_output_bytes.into())
+        );
+        assert_eq!(
+            serde_json::to_value(
+                value
+                    .export(ExportFormat::Json, json.len() - 1, &context)
+                    .unwrap_err()
+            )
+            .unwrap()["limit"]
+                .as_str(),
             Some("output_bytes")
         );
         match expected.iter().position(|value| value.contains('\n')) {
@@ -82,11 +90,17 @@ fn composed_scalar_lists_preserve_values_and_exact_complete_export_bounds() {
                     .export(ExportFormat::Raw, json.len(), &context)
                     .unwrap_err();
                 assert_eq!(
-                    error.error,
+                    error.code(),
                     ErrorCode::UnrepresentableOutput,
                     "raw case {case}"
                 );
-                assert_eq!(error.row, Some(vec![row + 1]));
+                assert_eq!(
+                    serde_json::from_value::<Option<Vec<usize>>>(
+                        serde_json::to_value(&error).unwrap()["row"].clone()
+                    )
+                    .unwrap(),
+                    Some(vec![row + 1])
+                );
             }
             None => {
                 let raw = expected

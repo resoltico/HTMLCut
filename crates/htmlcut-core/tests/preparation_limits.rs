@@ -30,9 +30,15 @@ fn input_bytes_admit_equality_and_refuse_every_excess() {
             assert_eq!(serde_json::to_value(value).unwrap(), "snow: 雪");
         } else {
             let error = result.unwrap_err();
-            assert_eq!(error.error, ErrorCode::LimitExceeded);
-            assert_eq!(error.limit.as_deref(), Some("input_bytes"));
-            assert_eq!(error.bound, Some((bytes.len() - excess).into()));
+            assert_eq!(error.code(), ErrorCode::LimitExceeded);
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                Some("input_bytes")
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                Some((bytes.len() - excess).into())
+            );
         }
     }
 }
@@ -47,8 +53,11 @@ fn library_deadlines_are_enforced_without_a_cli_watchdog() {
         &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
     )
     .unwrap_err();
-    assert_eq!(error.error, ErrorCode::LimitExceeded);
-    assert_eq!(error.limit.as_deref(), Some("time"));
+    assert_eq!(error.code(), ErrorCode::LimitExceeded);
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+        Some("time")
+    );
     let mut unlimited = Limits::default();
     unlimited.time_limit = None;
     let document = Document::parse(

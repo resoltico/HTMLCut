@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Byte decoding and incremental upstream tree admission.
 use crate::dom::{Html, TreeBuilder};
-use crate::{Error, ErrorCode, PreparationPolicy, limits::ExecutionContext};
+use crate::{Error, PreparationPolicy, limits::ExecutionContext};
 use encoding_rs::{
     DecoderResult, EncoderResult, Encoding, UTF_8, UTF_16BE, UTF_16LE, WINDOWS_1252, X_USER_DEFINED,
 };
@@ -56,16 +56,17 @@ impl Document {
         let clock = (context).clone();
         clock.check()?;
         if source.bytes.len() > limits.max_input_bytes {
-            return Err(Error::limit("input_bytes", limits.max_input_bytes));
+            return Err(Error::LimitExceeded {
+                limit: crate::Limit::InputBytes,
+                bound: (limits.max_input_bytes).into(),
+            });
         }
         let fallback = source
             .base_url
             .map(|base| {
-                Url::parse(base).map_err(|e| {
-                    Error::new(
-                        ErrorCode::InvalidBaseUrl,
-                        format!("Invalid base URL {base:?}: {e}."),
-                    )
+                Url::parse(base).map_err(|e| Error::InvalidBaseUrl {
+                    value: base.into(),
+                    reason: e.to_string(),
                 })
             })
             .transpose()?;
@@ -180,7 +181,10 @@ fn parse_admitted(
     clock: &ExecutionContext,
 ) -> Result<Html, Error> {
     if limits.max_nodes == 0 {
-        return Err(Error::limit("nodes", 0));
+        return Err(Error::LimitExceeded {
+            limit: crate::Limit::Nodes,
+            bound: (0).into(),
+        });
     }
     let mut parser =
         driver::parse_document(TreeBuilder::new(limits, clock.clone()), Default::default());
@@ -234,11 +238,8 @@ fn decode(
         bom
     } else if let Some(label) = source.encoding {
         (
-            Encoding::for_label(label.as_bytes()).ok_or_else(|| {
-                Error::new(
-                    ErrorCode::InvalidEncoding,
-                    format!("Unknown encoding label {label:?}."),
-                )
+            Encoding::for_label(label.as_bytes()).ok_or_else(|| Error::InvalidEncoding {
+                label: label.into(),
             })?,
             0,
         )
@@ -260,7 +261,10 @@ fn decode(
         output.reserve(
             decoder
                 .max_utf8_buffer_length_without_replacement(input.len())
-                .ok_or_else(|| Error::limit("input_bytes", source.bytes.len()))?,
+                .ok_or_else(|| Error::LimitExceeded {
+                    limit: crate::Limit::InputBytes,
+                    bound: (source.bytes.len()).into(),
+                })?,
         );
         let (result, read) = decoder.decode_to_string_without_replacement(input, &mut output, last);
         consumed += read;
@@ -269,14 +273,10 @@ fn decode(
             DecoderResult::InputEmpty | DecoderResult::OutputFull => (),
             DecoderResult::Malformed(length, after) => {
                 let offset = skip + consumed - usize::from(length) - usize::from(after);
-                let name = encoding.name().to_ascii_lowercase();
-                let mut e = Error::new(
-                    ErrorCode::UndecodableInput,
-                    format!("Input is not valid {name} at byte {offset}."),
-                );
-                e.encoding = Some(name);
-                e.offset = Some(offset);
-                return Err(e);
+                return Err(Error::UndecodableInput {
+                    encoding: encoding.name(),
+                    offset,
+                });
             }
         }
     }
@@ -491,6 +491,7 @@ fn xml_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ErrorCode;
     use crate::Limits;
     #[test]
     fn utf8_feeds_respect_the_byte_ceiling_without_losing_text() {
@@ -593,8 +594,14 @@ mod tests {
             &ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("nodes"));
-        assert_eq!(error.bound, Some(limits.max_nodes.into()));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("nodes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(limits.max_nodes.into())
+        );
         let observed = parser.tokenizer.sink.sink.node_count();
         assert_eq!(observed, limits.max_nodes);
         assert!(
@@ -618,7 +625,10 @@ mod tests {
             if depth == MAX_DEPTH {
                 assert!(result.is_ok());
             } else {
-                assert_eq!(result.unwrap_err().limit.as_deref(), Some("depth"));
+                assert_eq!(
+                    serde_json::to_value(result.unwrap_err()).unwrap()["limit"].as_str(),
+                    Some("depth")
+                );
             }
         }
         let input = "<p></p><frameset>";
@@ -630,14 +640,16 @@ mod tests {
             ..Limits::default()
         };
         assert_eq!(
-            Document::parse(
-                Source::new(input.as_bytes()),
-                &limits.preparation(),
-                &crate::ExecutionContext::new(limits.time_limit).unwrap()
+            serde_json::to_value(
+                Document::parse(
+                    Source::new(input.as_bytes()),
+                    &limits.preparation(),
+                    &crate::ExecutionContext::new(limits.time_limit).unwrap()
+                )
+                .unwrap_err()
             )
-            .unwrap_err()
-            .limit
-            .as_deref(),
+            .unwrap()["limit"]
+                .as_str(),
             Some("nodes")
         );
     }
@@ -688,7 +700,14 @@ mod tests {
             &crate::ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.offset, Some(CHUNK_BYTES - 1));
+        assert_eq!(
+            serde_json::to_value(&error)
+                .unwrap()
+                .get("offset")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize),
+            Some(CHUNK_BYTES - 1)
+        );
         let bytes = [0xff, 0xfe, b'x', 0, 0, 0xd8];
         let error = Document::parse(
             Source::new(&bytes),
@@ -696,8 +715,18 @@ mod tests {
             &crate::ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.encoding.as_deref(), Some("utf-16le"));
-        assert_eq!(error.offset, Some(4));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["encoding"].as_str(),
+            Some("utf-16le")
+        );
+        assert_eq!(
+            serde_json::to_value(&error)
+                .unwrap()
+                .get("offset")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as usize),
+            Some(4)
+        );
         let mut source = Source::new(b"\xef\xbb\xbf<title>ok</title>");
         source.encoding = Some("klingon");
         assert!(
@@ -943,9 +972,15 @@ mod tests {
                 result.unwrap();
             } else {
                 let error = result.unwrap_err();
-                assert_eq!(error.error, ErrorCode::LimitExceeded);
-                assert_eq!(error.limit.as_deref(), Some("nodes"));
-                assert_eq!(error.bound, Some(maximum.into()));
+                assert_eq!(error.code(), ErrorCode::LimitExceeded);
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                    Some("nodes")
+                );
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                    Some(maximum.into())
+                );
             }
         }
     }
@@ -970,9 +1005,15 @@ mod tests {
                 assert_eq!(result.unwrap().tree.nodes().len(), 4);
             } else {
                 let error = result.unwrap_err();
-                assert_eq!(error.error, ErrorCode::LimitExceeded);
-                assert_eq!(error.limit.as_deref(), Some("nodes"));
-                assert_eq!(error.bound, Some(maximum.into()));
+                assert_eq!(error.code(), ErrorCode::LimitExceeded);
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                    Some("nodes")
+                );
+                assert_eq!(
+                    serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                    Some(maximum.into())
+                );
             }
         }
     }
@@ -1000,8 +1041,14 @@ mod tests {
             &ExecutionContext::new(limits.time_limit).unwrap(),
         )
         .unwrap_err();
-        assert_eq!(error.limit.as_deref(), Some("nodes"));
-        assert_eq!(error.bound, Some(4.into()));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("nodes")
+        );
+        assert_eq!(
+            serde_json::to_value(&error).unwrap().get("bound").cloned(),
+            Some(4.into())
+        );
         assert_eq!(parser.tokenizer.sink.sink.node_count(), 4);
     }
 
@@ -1021,9 +1068,19 @@ mod tests {
                 &crate::ExecutionContext::new(Limits::default().time_limit).unwrap(),
             )
             .unwrap_err();
-            assert_eq!(error.error, ErrorCode::UndecodableInput);
-            assert_eq!(error.encoding.as_deref(), Some("gb18030"));
-            assert_eq!(error.offset, Some(1));
+            assert_eq!(error.code(), ErrorCode::UndecodableInput);
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["encoding"].as_str(),
+                Some("gb18030")
+            );
+            assert_eq!(
+                serde_json::to_value(&error)
+                    .unwrap()
+                    .get("offset")
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize),
+                Some(1)
+            );
         }
     }
 }

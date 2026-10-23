@@ -43,7 +43,7 @@ fn runtime_only_consumer_gets_complete_json_raw_and_outline_exports() {
         assert_eq!(
             finished(Job::new(None).unwrap().export(&value, smaller))
                 .unwrap_err()
-                .error,
+                .code(),
             ErrorCode::LimitExceeded
         );
     }
@@ -79,8 +79,8 @@ fn hidden_header_computation_and_later_export_share_the_canonical_allowance() {
         let initial = finished(request.job().unwrap().execute(request));
         let saved = finished(Job::new(None).unwrap().export(&original, limits));
         if maximum < expected.len() {
-            assert_eq!(initial.unwrap_err().error, ErrorCode::LimitExceeded);
-            assert_eq!(saved.unwrap_err().error, ErrorCode::LimitExceeded);
+            assert_eq!(initial.unwrap_err().code(), ErrorCode::LimitExceeded);
+            assert_eq!(saved.unwrap_err().code(), ErrorCode::LimitExceeded);
         } else {
             let Outcome::Returned(result) = initial.unwrap() else {
                 panic!()
@@ -121,13 +121,13 @@ fn representations_re_admit_exports_and_new_or_existing_files_before_publication
         let mut limits = Limits::default(); limits.max_output_bytes = allowance;
         assert_eq!(finished(Job::new(None).unwrap().export(&computed, limits.clone())).unwrap(), expected);
         let mut below = limits.clone(); below.max_output_bytes -= 1;
-        assert_eq!(finished(Job::new(None).unwrap().export(&computed, below.clone())).unwrap_err().limit.as_deref(), Some("output_bytes"));
+        assert_eq!(serde_json::to_value(finished(Job::new(None).unwrap().export(&computed, below.clone())).unwrap_err()).unwrap()["limit"].as_str(), Some("output_bytes"));
         for existing in [false, true] {
             let directory = tempfile::tempdir().unwrap();
             let path = directory.path().join("result");
             if existing { std::fs::write(&path, b"old").unwrap(); }
             let before:Vec<_> = std::fs::read_dir(directory.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
-            assert_eq!(finished(Job::new(None).unwrap().save(&computed, Destination::File(path.clone()), below.clone())).unwrap_err().limit.as_deref(), Some("output_bytes"));
+            assert_eq!(serde_json::to_value(finished(Job::new(None).unwrap().save(&computed, Destination::File(path.clone()), below.clone())).unwrap_err()).unwrap()["limit"].as_str(), Some("output_bytes"));
             let after:Vec<_> = std::fs::read_dir(directory.path()).unwrap().map(|e| e.unwrap().file_name()).collect();
             assert_eq!(after, before);
             if existing { assert_eq!(std::fs::read(&path).unwrap(), b"old"); }

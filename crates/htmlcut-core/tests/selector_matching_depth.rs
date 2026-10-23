@@ -137,9 +137,12 @@ fn consumer_thread_control() {
 }
 
 fn assert_refusal(error: htmlcut_core::Error, source: &str, selector: &str) {
-    assert_eq!(error.error, ErrorCode::InvalidSelector);
-    assert_eq!(error.select.as_deref(), Some(selector));
-    assert!(error.message.contains("64"));
+    assert_eq!(error.code(), ErrorCode::InvalidSelector);
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["select"].as_str(),
+        Some(selector)
+    );
+    assert!(error.to_string().contains("64"));
     let serialized = serde_json::to_string(&error).unwrap();
     assert!(!serialized.contains(source));
 }

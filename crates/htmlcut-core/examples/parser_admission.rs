@@ -24,7 +24,10 @@ fn main() {
                 &htmlcut_core::ExecutionContext::new(limits.time_limit).unwrap(),
             ) {
                 Err(error) => {
-                    assert_eq!(error.limit.as_deref(), Some("nodes"));
+                    assert_eq!(
+                        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                        Some("nodes")
+                    );
                     refusals += 1;
                 }
                 Ok(document) => {

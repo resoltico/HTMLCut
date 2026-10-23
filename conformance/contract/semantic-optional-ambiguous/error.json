@@ -1,5 +1,5 @@
 {
   "error": "count_mismatch",
   "found": 2,
-  "expected": "0..1"
+  "expected": {"min":0,"max":1}
 }

@@ -1,4 +1,5 @@
 {
  "error": "invalid_encoding",
+ "encoding": "klingon",
  "message": "unknown encoding label 'klingon'"
 }

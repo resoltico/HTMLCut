@@ -35,7 +35,10 @@ fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
     let observed = stopped.clone();
     let context = ExecutionContext::with_checkpoint(move || {
         if observed.load(Ordering::SeqCst) {
-            Err(Error::limit("time", 0))
+            Err(Error::LimitExceeded {
+                limit: crate::Limit::Time,
+                bound: 0.into(),
+            })
         } else {
             Ok(())
         }
@@ -47,9 +50,15 @@ fn exact_engine_types_are_shareable_and_one_context_spans_phases() {
     let error = document
         .extract(&contract, &limits.execution(), &context)
         .unwrap_err();
-    assert_eq!(error.error, ErrorCode::LimitExceeded);
-    assert_eq!(error.limit.as_deref(), Some("time"));
-    assert_eq!(error.bound, Some(serde_json::json!(0)));
+    assert_eq!(error.code(), ErrorCode::LimitExceeded);
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+        Some("time")
+    );
+    assert_eq!(
+        serde_json::to_value(&error).unwrap().get("bound").cloned(),
+        Some(serde_json::json!(0))
+    );
     let fresh = ExecutionContext::new(None).unwrap();
     assert_eq!(
         document
@@ -71,9 +80,17 @@ fn quick_queries_and_json_share_independently_expected_reading_cardinality_count
         ("url:href", "https://origin.test/x"),
     ] {
         for (cardinality, name, expected_range) in [
-            (QueryCardinality::One, "one", "1"),
-            (QueryCardinality::Optional, "optional", "0..1"),
-            (QueryCardinality::All, "all", "1.."),
+            (
+                QueryCardinality::One,
+                "one",
+                serde_json::json!({"min":1,"max":1}),
+            ),
+            (
+                QueryCardinality::Optional,
+                "optional",
+                serde_json::json!({"min":0,"max":1}),
+            ),
+            (QueryCardinality::All, "all", serde_json::json!({"min":1})),
         ] {
             for count in 0..=2 {
                 let page = "<p title=\"T\" href=\"/x\">X</p>".repeat(count);
@@ -178,10 +195,7 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
         if observed.fetch_add(1, Ordering::SeqCst) == 0 {
             Ok(())
         } else {
-            Err(Error::new(
-                ErrorCode::Cancelled,
-                "cancelled during compiler admission",
-            ))
+            Err(Error::Cancelled)
         }
     });
     let query = QuickQuery {
@@ -190,9 +204,15 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
         cardinality: QueryCardinality::One,
     };
     let error = Contract::quick(&query, &context).err().unwrap();
-    assert_eq!(error.error, ErrorCode::Cancelled);
-    assert!(error.limit.is_none());
-    assert!(error.bound.is_none());
+    assert_eq!(error.code(), ErrorCode::Cancelled);
+    assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("bound")
+            .cloned()
+            .is_none()
+    );
     let context = ExecutionContext::new(None).unwrap();
     for (select, read) in [
         ("[".into(), "text".into()),
@@ -209,15 +229,20 @@ fn typed_admission_preserves_observed_stop_errors_and_json_rejection_facts() {
             serde_json::json!({"select":query.select,"read":query.read,"match":"one"}).to_string();
         let typed = Contract::quick(&query, &context).err().unwrap();
         let json = Contract::from_json(&text, &context).err().unwrap();
-        assert_eq!(typed.error, json.error);
-        assert_eq!(
-            serde_json::to_value(typed.facts).unwrap(),
-            serde_json::to_value(json.facts).unwrap()
-        );
+        assert_eq!(typed.code(), json.code());
+        let facts = |error: &Error| {
+            let mut value = serde_json::to_value(error).unwrap();
+            value.as_object_mut().unwrap().remove("message");
+            value
+        };
+        assert_eq!(facts(&typed), facts(&json));
     }
     let expired = ExecutionContext::new(Some(std::time::Duration::ZERO)).unwrap();
     let error = Value::Null
         .export(ExportFormat::Raw, 0, &expired)
         .unwrap_err();
-    assert_eq!(error.limit.as_deref(), Some("time"));
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+        Some("time")
+    );
 }

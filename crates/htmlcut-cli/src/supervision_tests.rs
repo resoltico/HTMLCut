@@ -80,7 +80,7 @@ fn publication_phase_child() {
             std::fs::write(path, serde_json::to_vec(&observation).unwrap()).unwrap();
         }
         report(&error);
-        std::process::exit(exit_status(error.error));
+        std::process::exit(exit_status(error.code()));
     }
 }
 #[test]
@@ -290,7 +290,7 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
             .unwrap();
         }
         report(&error);
-        std::process::exit(exit_status(error.error));
+        std::process::exit(exit_status(error.code()));
     }
     for mode in ["held", "ordinary", "early-disarm"] {
         let mut root = tempfile::tempdir().unwrap();
@@ -361,14 +361,7 @@ fn unwind_cleanup_remains_supervised_and_early_disarm_is_detected() {
                 assert_eq!(diagnostic.iter().filter(|byte| **byte == b'\n').count(), 1);
                 assert!(diagnostic.starts_with(&result.stderr), "{result:?}");
             } else {
-                let stage = std::fs::read_to_string(ready).unwrap();
-                let detail = serde_json::to_string(&format!(
-                    "Staging candidate {stage}; extraordinary blocked filesystem calls can leave residue."
-                ))
-                .unwrap();
-                let expected = format!(
-                    "{{\"error\":\"limit_exceeded\",\"message\":\"The time limit of 1.0 was exceeded.\",\"limit\":\"time\",\"bound\":1.0,\"detail\":{detail}}}\n"
-                );
+                let expected = "{\"error\":\"limit_exceeded\",\"message\":\"The time limit of 1.0 was exceeded.\",\"limit\":\"time\",\"bound\":1.0}\n";
                 // The watchdog never blocks on a test-only observation write.
                 // Its bounded report may emit only a prefix, including no bytes.
                 assert!(
@@ -495,7 +488,10 @@ fn completion_fallback_leaves_the_reporting_owner_its_grace() {
     const READY: &str = "HTMLCUT_CLI_FALLBACK_READY";
     if let Some(ready) = std::env::var_os(READY) {
         std::fs::write(ready, b"reporting owner pending").unwrap();
-        let _ = completion::<()>(Completion::Supervised(Error::limit("time", 1.0)));
+        let _ = completion::<()>(Completion::Supervised(Error::LimitExceeded {
+            limit: htmlcut_runtime::Limit::Time,
+            bound: serde_json::Number::from_f64(1.0_f64).unwrap(),
+        }));
         unreachable!("the process fallback must terminate");
     }
     let mut root = tempfile::tempdir().unwrap();

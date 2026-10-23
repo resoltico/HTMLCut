@@ -110,7 +110,11 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
         .err()
         .unwrap();
         plain_message(&error);
-        assert!(error.message.contains("column"), "{}", error.message);
+        assert!(
+            error.to_string().contains("column"),
+            "{}",
+            error.to_string()
+        );
     }
     let error = Contract::from_json(
         r#"{"read":"html"}"#,
@@ -125,7 +129,7 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
         "attr:NAME",
         "url:NAME",
     ] {
-        assert!(error.message.contains(reading));
+        assert!(error.to_string().contains(reading));
     }
     let document = Document::parse(
         Source::new(b"<p>x</p>"),
@@ -151,8 +155,11 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
         })
         .unwrap_err();
     plain_message(&error);
-    assert_eq!(error.select.as_deref(), Some("[id="));
-    assert!(error.path.is_none());
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["select"].as_str(),
+        Some("[id=")
+    );
+    assert!(serde_json::to_value(&error).unwrap().get("path").is_none());
 }
 
 #[test]
@@ -171,7 +178,11 @@ fn corpus_runner_refuses_empty_or_incomplete_corpora() {
 
 fn plain_message(error: &htmlcut_core::Error) {
     for rendering in ["Some(", "None", "ParseError", "SourceLocation", " { "] {
-        assert!(!error.message.contains(rendering), "{}", error.message);
+        assert!(
+            !error.to_string().contains(rendering),
+            "{}",
+            error.to_string()
+        );
     }
 }
 

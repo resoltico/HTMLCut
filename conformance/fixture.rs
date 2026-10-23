@@ -271,8 +271,8 @@ mod tests {
             // Last values match the ordinary absent-selection refusal; discarding
             // duplicates must not let either exact or partial comparison accept it.
             for oracle in [
-                br#"{"error":"invalid_contract","error":"count_mismatch","path":"$","select":"aside","found":0,"expected":"1"}"#.as_slice(),
-                br#"{"error":"count_mismatch","path":"$","select":"aside","found":1,"found":0,"expected":"1"}"#.as_slice(),
+                br#"{"error":"invalid_contract","error":"count_mismatch","path":"$","select":"aside","found":0,"expected":{"min":1,"max":1}}"#.as_slice(),
+                br#"{"error":"count_mismatch","path":"$","select":"aside","found":1,"found":0,"expected":{"min":1,"max":1}}"#.as_slice(),
             ] {
                 fs::write(root.path().join("error.json"), oracle).unwrap();
                 assert!(std::panic::catch_unwind(|| load(root.path(), "contract")).is_err());

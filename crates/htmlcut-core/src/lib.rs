@@ -26,7 +26,7 @@ mod select;
 mod value;
 pub use contract::{Contract, QueryCardinality, QuickQuery};
 pub use document::{Document, Source};
-pub use error::{Error, ErrorCode, ErrorFacts};
+pub use error::{CountRange, Error, ErrorClass, ErrorCode, ExpectationFailure, Limit};
 pub use limits::{ExecutionContext, ExecutionPolicy, Limits, PreparationPolicy};
 pub use outline::{OutlineAttribute, OutlineOptions, OutlineReport, OutlineRow};
 pub use value::{ExportFormat, Value};

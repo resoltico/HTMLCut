@@ -12,23 +12,13 @@ use std::{
 };
 const REPORT_GRACE: Duration = Duration::from_millis(50);
 pub(crate) fn exit_status(code: ErrorCode) -> i32 {
-    match code {
-        ErrorCode::InvalidRequest
-        | ErrorCode::InvalidContract
-        | ErrorCode::InvalidSelector
-        | ErrorCode::InvalidPattern
-        | ErrorCode::InvalidEncoding
-        | ErrorCode::InvalidBaseUrl => 2,
-        ErrorCode::CountMismatch
-        | ErrorCode::ValueMismatch
-        | ErrorCode::ExpectationFailed
-        | ErrorCode::MissingAttribute
-        | ErrorCode::UnresolvableUrl
-        | ErrorCode::UnrepresentableOutput => 3,
-        ErrorCode::LimitExceeded => 4,
-        ErrorCode::InputUnreadable | ErrorCode::UndecodableInput | ErrorCode::OutputUnwritable => 5,
-        ErrorCode::Internal => 6,
-        ErrorCode::Cancelled => 130,
+    match code.class() {
+        htmlcut_runtime::ErrorClass::Request => 2,
+        htmlcut_runtime::ErrorClass::Refusal => 3,
+        htmlcut_runtime::ErrorClass::Limit => 4,
+        htmlcut_runtime::ErrorClass::Io => 5,
+        htmlcut_runtime::ErrorClass::Internal => 6,
+        htmlcut_runtime::ErrorClass::Cancelled => 130,
     }
 }
 pub(crate) fn report(error: &Error) {
@@ -62,7 +52,7 @@ fn supervise(control: JobControl) -> Result<(), Error> {
                     | Supervision::Finished
                     | Supervision::EnforcementInProgress => return,
                     Supervision::Claimed(error) => {
-                        let status = exit_status(error.error);
+                        let status = exit_status(error.code());
                         let grace_started = std::time::Instant::now();
                         // Enforcement still exits if reporting or cleanup setup panics.
                         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -88,11 +78,8 @@ fn supervise(control: JobControl) -> Result<(), Error> {
             }
         })
         .map(|_| ())
-        .map_err(|error| {
-            Error::new(
-                ErrorCode::Internal,
-                format!("The process supervisor could not start: {error}."),
-            )
+        .map_err(|error| Error::Internal {
+            reason: format!("The process supervisor could not start: {error}."),
         })
 }
 
@@ -103,7 +90,7 @@ fn completion<T>(result: Completion<T>) -> Result<T, Error> {
             // The supervisor owns reporting. A bounded fallback also covers a
             // failed report thread; libraries never wait for this process exit.
             std::thread::sleep(REPORT_GRACE * 3);
-            std::process::exit(exit_status(error.error));
+            std::process::exit(exit_status(error.code()));
         }
     }
 }
@@ -247,19 +234,13 @@ pub(crate) fn execute(command: Command) -> Result<(), Error> {
     };
     let job = request.job()?;
     supervise(job.control())?;
-    completion(job.execute(request))
-        .and_then(terminal_delivery)
-        .map_err(|mut error| {
-            if error.error == ErrorCode::InvalidContract && error.file.is_some() {
-                error
-                    .message
-                    .push_str(" Read a contract file with --from-file.");
-            }
-            if error.error == ErrorCode::InputUnreadable && error.file.as_deref().is_some_and(|path| path.starts_with("https://") || path.starts_with("http://")) {
-                error.message.push_str(" FILE is a local snapshot path. Fetch successfully into owned storage first, then pass the effective URL with --base-url and declared charset with --encoding; see the acquisition recipe in docs/contract.md.");
-            }
-            error
-        })
+    completion(job.execute(request)).and_then(terminal_delivery).map_err(|mut error| {
+        match &mut error {
+            Error::InputUnreadable { file, detail } if file.starts_with("http://") || file.starts_with("https://") => detail.push_str(" FILE is a local snapshot path. Fetch successfully into owned storage first, then pass the effective URL with --base-url and declared charset with --encoding; see the acquisition recipe in docs/contract.md."),
+            _ => (),
+        }
+        error
+    })
 }
 
 fn terminal_delivery(outcome: htmlcut_runtime::Outcome) -> Result<(), Error> {
@@ -267,10 +248,9 @@ fn terminal_delivery(outcome: htmlcut_runtime::Outcome) -> Result<(), Error> {
         htmlcut_runtime::Outcome::Delivered(
             htmlcut_runtime::Delivery::Delivered | htmlcut_runtime::Delivery::Disconnected,
         ) => Ok(()),
-        htmlcut_runtime::Outcome::Returned(_) => Err(Error::new(
-            ErrorCode::InvalidRequest,
-            "A terminal command requires a stream or file destination.",
-        )),
+        htmlcut_runtime::Outcome::Returned(_) => Err(Error::InvalidRequest {
+            reason: ("A terminal command requires a stream or file destination.").into(),
+        }),
     }
 }
 

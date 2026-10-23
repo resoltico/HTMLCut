@@ -7,5 +7,5 @@
   1
  ],
  "found": 0,
- "expected": "1"
+ "expected": {"min":1,"max":1}
 }

@@ -63,7 +63,7 @@ fn malformed_or_schema_requests_never_inspect_irrelevant_html_metadata() {
             },
         );
         if let Some(expected) = expected {
-            assert_eq!(result.unwrap_err().error, expected);
+            assert_eq!(result.unwrap_err().code(), expected);
         } else {
             assert!(
                 matches!(result.unwrap(),Outcome::Returned(result) if result.schema().is_some())

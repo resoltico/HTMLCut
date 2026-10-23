@@ -61,10 +61,8 @@ fn source_reading_limit_is_independent_of_final_capture_and_predicates() {
     );
     limits.max_reading_bytes = 5;
     assert_eq!(
-        extract(html, contract, &limits)
-            .unwrap_err()
-            .limit
-            .as_deref(),
+        serde_json::to_value(extract(html, contract, &limits).unwrap_err()).unwrap()["limit"]
+            .as_str(),
         Some("reading_bytes")
     );
     limits.max_reading_bytes = 6;
@@ -81,10 +79,11 @@ fn discarded_whitespace_never_consumes_transformed_reading_admission() {
         Value::String("x".into())
     );
     assert_eq!(
-        extract(&html, r#"{"select":"p","read":"text-content"}"#, &limits)
-            .unwrap_err()
-            .limit
-            .as_deref(),
+        serde_json::to_value(
+            extract(&html, r#"{"select":"p","read":"text-content"}"#, &limits).unwrap_err()
+        )
+        .unwrap()["limit"]
+            .as_str(),
         Some("reading_bytes")
     );
 }
@@ -110,10 +109,16 @@ fn malformed_url_with_base_reports_its_actual_parse_cause() {
                 .unwrap(),
         )
         .unwrap_err();
-    assert!(error.message.contains("malformed URL"));
-    assert!(!error.message.contains("without a usable"));
-    assert_eq!(error.path.as_deref(), Some("$"));
-    assert_eq!(error.value.as_deref(), Some("https://["));
+    assert!(error.to_string().contains("malformed URL"));
+    assert!(!error.to_string().contains("without a usable"));
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["path"].as_str(),
+        Some("$")
+    );
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["value"].as_str(),
+        Some("https://[")
+    );
 }
 
 #[test]

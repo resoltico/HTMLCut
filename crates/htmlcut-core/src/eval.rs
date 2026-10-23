@@ -133,30 +133,18 @@ fn needs_range(node: &Node) -> bool {
     }
 }
 
-fn selected(select: Option<&str>) -> String {
-    select
-        .map(|text| format!("selector {}", serde_json::to_string(text).unwrap()))
-        .unwrap_or_else(|| "the match itself".into())
-}
-fn range(min: usize, max: Option<usize>) -> String {
-    match max {
-        Some(max) if max == min => min.to_string(),
-        Some(max) => format!("{min}..{max}"),
-        None => format!("{min}.."),
-    }
-}
 fn location(mut error: Error, path: &str, rows: &[usize]) -> Error {
-    error.path = Some(path.into());
-    if !rows.is_empty() {
-        error.row = Some(rows.to_vec());
+    match &mut error {
+        Error::MissingAttribute { path: at, row }
+        | Error::UnresolvableUrl { path: at, row, .. } => {
+            *at = path.into();
+            *row = rows.to_vec();
+        }
+        _ => (),
     }
     error
 }
-enum PredicateFailure {
-    Count(usize, String),
-    Value(String),
-    MissingAttribute,
-}
+type PredicateFailure = crate::ExpectationFailure;
 struct Engine<'d> {
     document: &'d Document,
     reading_limit: usize,
@@ -177,9 +165,15 @@ impl<'d> Engine<'d> {
             &mut self.caches,
         )?;
         let count = elements.len();
-        let expected = range(predicate.min, Some(predicate.max));
+        let expected = crate::CountRange {
+            min: predicate.min,
+            max: Some(predicate.max),
+        };
         if count < predicate.min || count > predicate.max {
-            return Ok(Some(PredicateFailure::Count(count, expected)));
+            return Ok(Some(PredicateFailure::Count {
+                found: count,
+                expected,
+            }));
         }
         let tests = predicate.check.equals.is_some() || predicate.check.pattern.is_some();
         for element in elements {
@@ -198,7 +192,7 @@ impl<'d> Engine<'d> {
                 None,
             ) {
                 Ok(value) => value,
-                Err(e) if e.error == ErrorCode::MissingAttribute => {
+                Err(e) if e.code() == ErrorCode::MissingAttribute => {
                     return Ok(Some(PredicateFailure::MissingAttribute));
                 }
                 Err(e) => return Err(e),
@@ -210,7 +204,9 @@ impl<'d> Engine<'d> {
                     .as_ref()
                     .is_some_and(|p| !p.is_match(&value))
             {
-                return Ok(Some(PredicateFailure::Value(value)));
+                return Ok(Some(PredicateFailure::Value {
+                    value: crate::error::preview(&value),
+                }));
             }
             self.clock.check()?;
         }
@@ -220,40 +216,12 @@ impl<'d> Engine<'d> {
         self.clock.tick()?;
         for predicate in &node.expect {
             if let Some(failure) = self.holds(predicate, scope)? {
-                let mut e = location(
-                    Error::new(ErrorCode::ExpectationFailed, "An expectation failed."),
-                    &predicate.path,
-                    rows,
-                );
-                e.select = predicate.select.as_ref().map(|s| s.text.clone());
-                match failure {
-                    PredicateFailure::Count(found, expected) => {
-                        e.message = format!(
-                            "{}: {} found {found}; expected {expected}.",
-                            predicate.path,
-                            selected(e.select.as_deref())
-                        );
-                        e.found = Some(found);
-                        e.expected = Some(expected);
-                    }
-                    PredicateFailure::Value(value) => {
-                        e = e.observed(&value);
-                        e.message = format!(
-                            "{}: {} read {}, which fails the expectation.",
-                            predicate.path,
-                            selected(e.select.as_deref()),
-                            serde_json::to_string(e.value.as_deref().unwrap()).unwrap()
-                        );
-                    }
-                    PredicateFailure::MissingAttribute => {
-                        e.message = format!(
-                            "{}: {} lacks a required attribute.",
-                            predicate.path,
-                            selected(e.select.as_deref())
-                        );
-                    }
-                }
-                return Err(e);
+                return Err(Error::ExpectationFailed {
+                    path: predicate.path.clone(),
+                    select: predicate.select.as_ref().map(|s| s.text.clone()),
+                    row: rows.to_vec(),
+                    failure,
+                });
             }
         }
         let mut found = Vec::new();
@@ -272,33 +240,26 @@ impl<'d> Engine<'d> {
             }
         }
         let count = found.len();
-        let (acceptable, expected) = match node.cardinality {
-            Cardinality::One(Some(n)) => (count >= n, range(n, None)),
-            Cardinality::One(None) => (count == 1, String::from("1")),
-            Cardinality::Optional => (count <= 1, String::from("0..1")),
-            Cardinality::All { min, max } => (
-                count >= min && max.is_none_or(|n| count <= n),
-                range(min, max),
-            ),
+        let expected = match node.cardinality {
+            Cardinality::One(Some(n)) => crate::CountRange { min: n, max: None },
+            Cardinality::One(None) => crate::CountRange {
+                min: 1,
+                max: Some(1),
+            },
+            Cardinality::Optional => crate::CountRange {
+                min: 0,
+                max: Some(1),
+            },
+            Cardinality::All { min, max } => crate::CountRange { min, max },
         };
-        if !acceptable {
-            let selector = node.select.as_ref().map(|s| s.text.clone());
-            let mut e = location(
-                Error::new(
-                    ErrorCode::CountMismatch,
-                    format!(
-                        "{}: {} found {count}; expected {expected}.",
-                        node.path,
-                        selected(selector.as_deref())
-                    ),
-                ),
-                &node.path,
-                rows,
-            );
-            e.select = selector;
-            e.found = Some(count);
-            e.expected = Some(expected);
-            return Err(e);
+        if count < expected.min || expected.max.is_some_and(|max| count > max) {
+            return Err(Error::CountMismatch {
+                path: node.path.clone(),
+                select: node.select.as_ref().map(|s| s.text.clone()),
+                row: rows.to_vec(),
+                found: count,
+                expected,
+            });
         }
         if let Cardinality::One(Some(n)) = node.cardinality {
             found = vec![found[n - 1]];
@@ -379,7 +340,7 @@ impl<'d> Engine<'d> {
                     )
                     .map_err(|e| {
                         if matches!(
-                            e.error,
+                            e.code(),
                             ErrorCode::MissingAttribute | ErrorCode::UnresolvableUrl
                         ) {
                             location(e, &node.path, &here)
@@ -440,19 +401,10 @@ impl<'d> Engine<'d> {
         path: &str,
         rows: &[usize],
     ) -> Result<String, Error> {
-        let failure = || {
-            location(
-                Error::new(
-                    ErrorCode::ValueMismatch,
-                    format!(
-                        "{path}: observed value {:?} does not satisfy its declared shape.",
-                        value.chars().take(120).collect::<String>()
-                    ),
-                )
-                .observed(&value),
-                path,
-                rows,
-            )
+        let failure = || Error::ValueMismatch {
+            path: path.into(),
+            row: rows.to_vec(),
+            value: crate::error::preview(&value),
         };
         if check.equals.as_ref().is_some_and(|s| s != &value) {
             return Err(failure());
@@ -644,8 +596,11 @@ mod tests {
                 panic!("an expired reading must refuse instead of becoming a predicate mismatch")
             }
         };
-        assert_eq!(error.error, ErrorCode::LimitExceeded);
-        assert_eq!(error.limit.as_deref(), Some("time"));
+        assert_eq!(error.code(), ErrorCode::LimitExceeded);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["limit"].as_str(),
+            Some("time")
+        );
     }
     #[test]
     fn template_contents_stay_outside_every_selection_context() {
@@ -689,16 +644,33 @@ mod tests {
     fn nested_all_rows_report_indexes_and_fields_fail_in_byte_order() {
         let error = extract("<main><section><p>a</p></section><section><p>b</p><p>x</p></section></main>",
             r#"{"select":"section","match":"all","fields":{"items":{"select":"p","match":"all","equals":"b"}}}"#).unwrap_err();
-        assert_eq!(error.row.as_deref(), Some([1, 1].as_slice()));
+        assert_eq!(
+            serde_json::from_value::<Option<Vec<usize>>>(
+                serde_json::to_value(&error).unwrap()["row"].clone()
+            )
+            .unwrap()
+            .as_deref(),
+            Some([1, 1].as_slice())
+        );
         let error = extract("<main><section><p>a</p></section><section><p>b</p><p>x</p></section></main>",
             r#"{"select":"section","match":"all","fields":{"items":{"select":"p","match":"all","pattern":"^[ab]$"}}}"#).unwrap_err();
-        assert_eq!(error.row.as_deref(), Some([2, 2].as_slice()));
+        assert_eq!(
+            serde_json::from_value::<Option<Vec<usize>>>(
+                serde_json::to_value(&error).unwrap()["row"].clone()
+            )
+            .unwrap()
+            .as_deref(),
+            Some([2, 2].as_slice())
+        );
         let error = extract(
             "<p>x</p>",
             r#"{"fields":{"z":"missing-z","a":"missing-a"}}"#,
         )
         .unwrap_err();
-        assert_eq!(error.path.as_deref(), Some("$.fields.a"));
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["path"].as_str(),
+            Some("$.fields.a")
+        );
     }
     #[test]
     fn missing_attribute_predicates_filter_without_becoming_read_errors() {
@@ -714,8 +686,11 @@ mod tests {
     #[test]
     fn an_unmatched_value_group_refuses_and_an_empty_participating_group_is_valid() {
         let error = extract("<p>b</p>", r#"{"select":"p","pattern":"(?<value>a)|b"}"#).unwrap_err();
-        assert_eq!(error.error, ErrorCode::ValueMismatch);
-        assert_eq!(error.value.as_deref(), Some("b"));
+        assert_eq!(error.code(), ErrorCode::ValueMismatch);
+        assert_eq!(
+            serde_json::to_value(&error).unwrap()["value"].as_str(),
+            Some("b")
+        );
         assert_eq!(
             extract("<p>b</p>", r#"{"select":"p","pattern":"(?<value>a*)b"}"#).unwrap(),
             Value::String(String::new())
@@ -782,8 +757,14 @@ mod tests {
                 &crate::ExecutionContext::new((limits).time_limit).unwrap(),
             )
             .unwrap_err();
-            assert_eq!(error.limit.as_deref(), Some("output_bytes"));
-            assert_eq!(error.bound, Some((size - 1).into()));
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                Some("output_bytes")
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap().get("bound").cloned(),
+                Some((size - 1).into())
+            );
         }
     }
     #[test]

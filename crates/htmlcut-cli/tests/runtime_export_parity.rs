@@ -131,8 +131,11 @@ fn schema_bytes_and_output_admission_match_the_delivered_cli() {
                 Err(error) => error,
                 Ok(_) => panic!("schema exceeded its complete output allowance"),
             };
-            assert_eq!(error.error, ErrorCode::LimitExceeded);
-            assert_eq!(error.limit.as_deref(), Some("output_bytes"));
+            assert_eq!(error.code(), ErrorCode::LimitExceeded);
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["limit"].as_str(),
+                Some("output_bytes")
+            );
             assert_eq!(cli.status.code(), Some(4), "{cli:?}");
             assert!(cli.stdout.is_empty());
             assert_eq!(cli.stderr, error.to_json_line());

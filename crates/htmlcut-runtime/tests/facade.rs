@@ -50,7 +50,7 @@ fn workers_share_only_semantic_state_and_keep_policy_and_cancellation_independen
             Destination::Return,
         ))
         .unwrap_err()
-        .error
+        .code()
     });
     let error = finished(cancelled.execute_prepared(
         &document,
@@ -59,9 +59,15 @@ fn workers_share_only_semantic_state_and_keep_policy_and_cancellation_independen
         Destination::Return,
     ))
     .unwrap_err();
-    assert_eq!(error.error, ErrorCode::Cancelled);
-    assert!(error.limit.is_none());
-    assert!(error.bound.is_none());
+    assert_eq!(error.code(), ErrorCode::Cancelled);
+    assert!(serde_json::to_value(&error).unwrap().get("limit").is_none());
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("bound")
+            .cloned()
+            .is_none()
+    );
     assert_eq!(worker.join().unwrap(), ErrorCode::LimitExceeded);
     let result = finished(Job::new(None).unwrap().execute_prepared(
         &document,
@@ -101,7 +107,7 @@ fn later_save_rechecks_canonical_admission_including_null_and_framing() {
         limits,
     ))
     .unwrap_err();
-    assert_eq!(error.error, ErrorCode::LimitExceeded);
+    assert_eq!(error.code(), ErrorCode::LimitExceeded);
     assert_eq!(std::fs::read(output).unwrap(), b"old");
 }
 #[test]
@@ -125,10 +131,10 @@ fn invalid_export_and_contract_refuse_before_missing_html_and_zero_jobs_do_no_lo
             limits: Limits::default(),
             destination: Destination::Return,
         }));
-        assert_eq!(result.unwrap_err().error, expected);
+        assert_eq!(result.unwrap_err().code(), expected);
     }
     assert_eq!(
-        Job::new(Some(Duration::MAX)).err().unwrap().error,
+        Job::new(Some(Duration::MAX)).err().unwrap().code(),
         ErrorCode::InvalidRequest
     );
     let error = finished(Job::new(Some(Duration::ZERO)).unwrap().prepare(
@@ -138,7 +144,10 @@ fn invalid_export_and_contract_refuse_before_missing_html_and_zero_jobs_do_no_lo
         Limits::default(),
     ))
     .unwrap_err();
-    assert_eq!(error.limit.as_deref(), Some("time"));
+    assert_eq!(
+        serde_json::to_value(&error).unwrap()["limit"].as_str(),
+        Some("time")
+    );
 }
 #[test]
 fn structured_outline_counts_hidden_header_and_rows() {
@@ -216,7 +225,7 @@ fn syntax_conflicts_refuse_before_a_request_job_deadline_starts() {
         destination: Destination::Return,
     };
     assert_eq!(
-        request.job().err().unwrap().error,
+        request.job().err().unwrap().code(),
         ErrorCode::InvalidRequest
     );
 }
@@ -257,7 +266,7 @@ fn schema_admits_exact_framing_bytes_and_refuses_one_below() {
     assert_eq!(
         finished(Job::new(None).unwrap().execute(request(bytes.len() - 1)))
             .unwrap_err()
-            .error,
+            .code(),
         ErrorCode::LimitExceeded
     );
 }
@@ -275,9 +284,14 @@ fn oversized_outline_selection_refuses_before_source_lookup_or_diagnostic_copy()
         destination: Destination::Return,
     };
     let error = finished(Job::new(None).unwrap().execute(request)).unwrap_err();
-    assert_eq!(error.error, ErrorCode::InvalidSelector);
-    assert!(error.select.is_none());
-    assert!(error.file.is_none());
+    assert_eq!(error.code(), ErrorCode::InvalidSelector);
+    assert!(
+        serde_json::to_value(&error)
+            .unwrap()
+            .get("select")
+            .is_none()
+    );
+    assert!(serde_json::to_value(&error).unwrap().get("file").is_none());
 }
 
 #[test]

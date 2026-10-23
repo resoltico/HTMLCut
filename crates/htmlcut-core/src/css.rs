@@ -156,10 +156,19 @@ mod tests {
             let error = Contract::from_json(&input, &crate::ExecutionContext::new(None).unwrap())
                 .err()
                 .unwrap();
-            assert_eq!(error.error, ErrorCode::InvalidSelector, "{selector}");
-            assert_eq!(error.path.as_deref(), Some("$.select"));
-            assert_eq!(error.select.as_deref(), Some(selector));
-            assert!(error.message.contains("unsupported pseudo"), "{error:?}");
+            assert_eq!(error.code(), ErrorCode::InvalidSelector, "{selector}");
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
+                Some("$.select")
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["select"].as_str(),
+                Some(selector)
+            );
+            assert!(
+                error.to_string().contains("unsupported pseudo"),
+                "{error:?}"
+            );
         }
 
         // The documented attribute alternatives inspect snapshot state without

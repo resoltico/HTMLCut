@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MPL-2.0
 //! Admitted upstream selectors and scope-aware matching caches.
+use crate::Error;
 use crate::limits::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};
-use crate::{Error, ErrorCode};
 use selectors::{
     matching,
     parser::{ParseRelative, SelectorList},
@@ -20,16 +20,16 @@ impl Selector {
     }
     pub(crate) fn compile(text: &str, path: &str) -> Result<Self, Error> {
         if text.len() > MAX_PATTERN_BYTES {
-            return Err(Error::new(
-                ErrorCode::InvalidSelector,
-                format!("The selector exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
-            )
-            .at(path));
+            return Err(Error::InvalidSelector {
+                path: Some(path.into()),
+                select: None,
+                reason: format!("The selector exceeds the {MAX_PATTERN_BYTES}-byte grammar bound."),
+            });
         }
-        let failure = |message: String| {
-            let mut error = Error::new(ErrorCode::InvalidSelector, message).at(path);
-            error.select = Some(text.into());
-            error
+        let failure = |reason: String| Error::InvalidSelector {
+            path: Some(path.into()),
+            select: Some(text.into()),
+            reason,
         };
         if !syntax_admitted(text) {
             return Err(failure(
@@ -203,9 +203,15 @@ mod tests {
             ("p >", "a combinator has no following selector"),
         ] {
             let error = Selector::compile(selector, "$").err().unwrap();
-            assert!(error.message.contains(reason), "{}", error.message);
-            assert_eq!(error.select.as_deref(), Some(selector));
-            assert_eq!(error.path.as_deref(), Some("$"));
+            assert!(error.to_string().contains(reason), "{}", error.to_string());
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["select"].as_str(),
+                Some(selector)
+            );
+            assert_eq!(
+                serde_json::to_value(&error).unwrap()["path"].as_str(),
+                Some("$")
+            );
         }
     }
 }
