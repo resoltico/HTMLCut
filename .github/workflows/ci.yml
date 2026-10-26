@@ -34,7 +34,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo doc --workspace --no-deps --locked
         env: { RUSTDOCFLAGS: '-Dwarnings' }
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with: { tool: 'cargo-deny@${{ env.CARGO_DENY_VERSION }}' }
       - run: cargo deny check
   test:
@@ -94,7 +94,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }
@@ -116,7 +116,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
       - run: cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
       - if: always()
@@ -130,7 +130,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@a4d3f3f761dcd95cce1b72cb61cb6d1963438177 # v2
+      - uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }
