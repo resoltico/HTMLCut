@@ -6,7 +6,7 @@ Notable changes to this project are documented in this file. The format is based
 
 ### Changed
 
-- Update Rust dependencies and pinned CI/release tools to current stable vendor releases; refresh the fuzz nightly. The minimum supported Rust version remains 1.88.0.
+- Update Rust dependencies and pinned CI/release tools to current stable vendor releases; refresh the fuzz nightly. **Source-build requirement:** raise the minimum supported Rust version to 1.99.1, matching the current stable development compiler. Remove the redundant separate MSRV CI job.
 - Invalid-selector diagnostics retain the original selector and contract path, but no longer include the error column or unsupported pseudo-class name because the upstream parser no longer supplies them.
 
 ## [24.0.0] - 2026-10-23

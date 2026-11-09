@@ -15,7 +15,7 @@ cargo deny check
 RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example parser_admission
 ```
 
-Install cargo-deny, cargo-fuzz and cargo-mutants at the versions declared once in CI's top-level environment. For example, read a tool version there and pass it to `cargo install --version VERSION --locked TOOL`; keep its `bin` directory on PATH. The MSRV job installs the declared minimum compiler and runs the workspace tests. Native tests run on the four shipped target/runner combinations.
+Install cargo-deny, cargo-fuzz and cargo-mutants at the versions declared once in CI's top-level environment. For example, read a tool version there and pass it to `cargo install --version VERSION --locked TOOL`; keep its `bin` directory on PATH. The minimum supported compiler matches the pinned stable development compiler. Native tests run on the four shipped target/runner combinations.
 
 `actionlint` checks all workflows. [.github/actionlint.yaml](.github/actionlint.yaml) scopes reviewed SC2086/SC2129 exceptions to dist's generated release file; handwritten workflows retain full ShellCheck checking. Do not hand-edit generated release YAML: change [dist-workspace.toml](dist-workspace.toml) or [.github/build-setup.yml](.github/build-setup.yml), then run `dist generate` using the configured dist version.
 

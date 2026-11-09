@@ -16,7 +16,7 @@ resolver = "3"
 [workspace.package]
 version = "24.0.0"
 edition = "2024"
-rust-version = "1.88.0"
+rust-version = "1.99.1"
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots, with complete compact results."
 license = "MPL-2.0"
 authors = ["Ervins Strauhmanis"]
