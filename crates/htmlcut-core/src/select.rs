@@ -36,34 +36,29 @@ impl Selector {
                 "The selector exceeds the syntax nesting bound of 64.".into(),
             ));
         }
-        let mut input = cssparser::ParserInput::new(text);
-        let mut parser = cssparser::Parser::new(&mut input);
+        let mut parser = cssparser::Parser::new(text);
         let list = SelectorList::parse(&crate::css::Parser, &mut parser, ParseRelative::No)
             .map_err(|e| {
                 use cssparser::{BasicParseErrorKind, ParseErrorKind};
                 use selectors::parser::SelectorParseErrorKind;
                 let reason = match e.kind {
                     ParseErrorKind::Basic(BasicParseErrorKind::EndOfInput) => {
-                        "unexpected end of selector".into()
+                        "unexpected end of selector"
                     }
                     ParseErrorKind::Custom(
-                        SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
-                    ) => format!(
-                        "unsupported pseudo-class or pseudo-element {}",
-                        serde_json::to_string(name.as_ref()).unwrap()
-                    ),
+                        SelectorParseErrorKind::UnsupportedPseudoClassOrElement,
+                    ) => "unsupported pseudo-class or pseudo-element",
                     ParseErrorKind::Custom(SelectorParseErrorKind::EmptySelector) => {
-                        "the selector is empty".into()
+                        "the selector is empty"
                     }
                     ParseErrorKind::Custom(SelectorParseErrorKind::DanglingCombinator) => {
-                        "a combinator has no following selector".into()
+                        "a combinator has no following selector"
                     }
-                    _ => "selector syntax error".into(),
+                    _ => "selector syntax error",
                 };
                 failure(format!(
-                    "Invalid CSS selector {} at column {}: {reason}.",
-                    serde_json::to_string(text).unwrap(),
-                    e.location.column
+                    "Invalid CSS selector {}: {reason}.",
+                    serde_json::to_string(text).unwrap()
                 ))
             })?;
         depth::admit(&list).map_err(|message| failure(message.into()))?;
@@ -99,7 +94,7 @@ impl Selector {
         self.list
             .slice()
             .iter()
-            .any(|s| matching::matches_selector(s, 0, None, &element, &mut context))
+            .any(|s| matching::matches_selector(s, 0, None, element, &mut context))
     }
 }
 
