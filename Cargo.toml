@@ -31,7 +31,7 @@ ego-tree = "0.11.0"
 encoding_rs = "0.8.42"
 precomputed-hash = "0.1.1"
 cssparser = "0.37.0"
-selectors = "0.38.0"
+selectors = "0.42.0"
 html5ever = "0.40.1"
 tempfile = "3.27.0"
 htmlcut-core = { path = "crates/htmlcut-core", version = "24.0.0" }
