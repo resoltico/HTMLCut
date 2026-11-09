@@ -104,7 +104,15 @@ fn compiling_literal_contracts_have_schema_witnesses() {
 
 #[test]
 fn refusal_messages_explain_facts_without_debug_renderings() {
-    for selector in ["[id=", "p:contains(x)", "div:has(p:has(a))", "p >"] {
+    for (selector, reason) in [
+        ("[id=", "unexpected end of selector"),
+        (
+            "p:contains(x)",
+            "unsupported pseudo-class or pseudo-element",
+        ),
+        ("div:has(p:has(a))", "selector syntax error"),
+        ("p >", "a combinator has no following selector"),
+    ] {
         let error = Contract::from_json(
             &serde_json::json!({"select":selector}).to_string(),
             &support::test_stop(None).unwrap(),
@@ -112,11 +120,11 @@ fn refusal_messages_explain_facts_without_debug_renderings() {
         .err()
         .unwrap();
         plain_message(&error);
-        assert!(
-            error.to_string().contains("column"),
-            "{}",
-            error.to_string()
-        );
+        assert!(error.to_string().contains(reason), "{error}");
+        let facts = serde_json::to_value(&error).unwrap();
+        assert_eq!(facts["error"], "invalid_selector");
+        assert_eq!(facts["path"], "$.select");
+        assert_eq!(facts["select"], selector);
     }
     let error = Contract::from_json(r#"{"read":"html"}"#, &support::test_stop(None).unwrap())
         .err()

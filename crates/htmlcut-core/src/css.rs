@@ -10,7 +10,7 @@ use std::fmt;
 pub(crate) struct Parser;
 impl<'i> parser::Parser<'i> for Parser {
     type Impl = Simple;
-    type Error = SelectorParseErrorKind<'i>;
+    type Error = SelectorParseErrorKind;
 
     fn parse_is_and_where(&self) -> bool {
         true
@@ -96,8 +96,6 @@ impl PrecomputedHash for CssLocalName {
 pub(crate) enum NonTSPseudoClass {}
 
 impl parser::NonTSPseudoClass for NonTSPseudoClass {
-    type Impl = Simple;
-
     fn is_active_or_hover(&self) -> bool {
         false
     }
@@ -120,9 +118,7 @@ impl ToCss for NonTSPseudoClass {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum PseudoElement {}
 
-impl parser::PseudoElement for PseudoElement {
-    type Impl = Simple;
-}
+impl parser::PseudoElement for PseudoElement {}
 
 impl ToCss for PseudoElement {
     fn to_css<W>(&self, dest: &mut W) -> fmt::Result

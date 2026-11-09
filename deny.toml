@@ -20,6 +20,8 @@ allow = [
 ]
 confidence-threshold = 0.93
 exceptions = [
+    # Approved for the hashbrown dependency used by selectors/jsonschema.
+    { crate = "foldhash@0.2.0", allow = ["Zlib"] },
 ]
 
 [licenses.private]
@@ -39,10 +41,6 @@ allow = []
 allow-workspace = false
 deny = []
 skip = [
-    { crate = "phf@0.13.1", reason = "Maintained cssparser/selectors require PHF 0.13 while fixed html5ever 0.40.1 uses web_atoms/string_cache on PHF 0.14; retain this exact graph exception until upstream constraints converge." },
-    { crate = "phf_codegen@0.13.1", reason = "Maintained cssparser/selectors require PHF 0.13 while fixed html5ever 0.40.1 uses web_atoms/string_cache on PHF 0.14; retain this exact graph exception until upstream constraints converge." },
-    { crate = "phf_generator@0.13.1", reason = "Maintained cssparser/selectors require PHF 0.13 while fixed html5ever 0.40.1 uses web_atoms/string_cache on PHF 0.14; retain this exact graph exception until upstream constraints converge." },
-    { crate = "phf_shared@0.13.1", reason = "Maintained cssparser/selectors require PHF 0.13 while fixed html5ever 0.40.1 uses web_atoms/string_cache on PHF 0.14; retain this exact graph exception until upstream constraints converge." },
     { crate = "syn@2.0.119", reason = "Current upstream proc-macro dependencies still require syn 2 while current serde and ref-cast use syn 3; keep this exact exception until those remaining upstream dependencies converge on syn 3." },
 ]
 skip-tree = []
