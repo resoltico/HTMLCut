@@ -6,9 +6,9 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [25.0.0] - 2026-11-16
 
-- **Breaking:** Original software, tooling and documentation use AGPL-3.0-only. Redistributors must provide matching Corresponding Source; existing MPL grants and third-party terms remain valid.
-- **Breaking:** Source downloads use `SOURCE.tar.gz` with locked vendored dependencies; scripts expecting `source.tar.gz` must switch. Archives include project notices.
-- **Breaking:** Source builds require Rust 1.100.0; development, CI and packaging use that compiler and updated Rust dependencies.
+- Original software, tooling and documentation use AGPL-3.0-only. Redistributors must provide matching Corresponding Source; existing MPL grants and third-party terms remain valid.
+- Source downloads use `SOURCE.tar.gz` with locked vendored dependencies; scripts expecting `source.tar.gz` must switch. Archives include project notices.
+- Source builds require Rust 1.100.0; development, CI and packaging use that compiler and updated Rust dependencies.
 - Selector-error consumers must accept diagnostics without the error column or unsupported pseudo-class name; the selector and contract path remain.
 - Contributions also grant the owner future commercial relicensing rights; separate commercial terms are not offered. See [contribution terms](PROJECT-NOTICE.md#contribution-terms).
 - Add user-local CLI installers with verified downloads, updates, offline uninstall and explicit backed-up replacement of untracked executables; Help links match installer source.
