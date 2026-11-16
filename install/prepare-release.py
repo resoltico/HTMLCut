@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 from pathlib import Path
 import subprocess
+import sys
 
 
 INSTALLERS = ("install.sh", "install.ps1")
@@ -40,6 +41,8 @@ def prepare(root: Path, revision: str) -> None:
 
 
 def main():
+    # Local imports must not add bytecode files to the captured checkout.
+    sys.dont_write_bytecode = True
     root = Path(__file__).resolve().parent.parent
     revision = subprocess.check_output(
         ["git", "rev-parse", "--verify", "HEAD"], cwd=root, text=True
