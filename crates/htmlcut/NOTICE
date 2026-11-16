@@ -1,6 +1,9 @@
 HTMLCut
 Copyright (c) 2026 Ervins Strauhmanis
 
-Original HTMLCut CLI source is governed by the Mozilla Public License 2.0.
-See LICENSE for the complete terms. Dependency packages retain their independent
-licenses and notices. Matching source: https://github.com/resoltico/HTMLCut
+Original HTMLCut CLI source uses AGPL-3.0-only; see LICENSE.
+Dependencies retain their own licenses and notices. Matching project source,
+source-delivery information and contribution terms:
+https://github.com/resoltico/HTMLCut/blob/main/PROJECT-NOTICE.md
+Separate commercial terms are not offered here:
+https://github.com/resoltico/HTMLCut/blob/main/LICENSE-COMMERCIAL.md

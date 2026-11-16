@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 [package]
 exclude = ["tests/**"]
 name = "htmlcut-core"
@@ -6,7 +6,7 @@ publish = true
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license = "MPL-2.0 AND ISC"
+license = "AGPL-3.0-only AND ISC"
 authors.workspace = true
 repository.workspace = true
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots."
@@ -27,7 +27,7 @@ url.workspace = true
 
 [dev-dependencies]
 htmlcut-conformance.workspace = true
-jsonschema = { version = "0.61.0", default-features = false }
+jsonschema = { version = "0.61.2", default-features = false }
 tempfile.workspace = true
 
 [lints]

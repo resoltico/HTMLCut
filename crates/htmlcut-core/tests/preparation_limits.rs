@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Caller-owned byte and cooperative deadline boundaries through the public API.
 use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 use std::time::Duration;

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 [workspace]
 members = ["cargo:."]
 
@@ -12,9 +12,18 @@ targets = ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-
 unix-archive = ".tar.gz"
 windows-archive = ".zip"
 github-attestations = true
-include = ["THIRD-PARTY-LICENSES.html", "NOTICE"]
+source-tarball = false
+include = ["THIRD-PARTY-LICENSES.html", "NOTICE", "PROJECT-NOTICE.md", "LICENSE-COMMERCIAL.md"]
 github-build-setup = "../build-setup.yml"
 pr-run-mode = "plan"
+# The source-owned overlay adds strict qualification before global artifact upload.
+# Native CI checks exact upstream generation plus overlay instead of raw CI text.
+allow-dirty = ["ci"]
+github-attestations-phase = "host"
+
+[[dist.extra-artifacts]]
+artifacts = ["target/installer-release/install.sh", "target/installer-release/install.ps1", "target/installer-release/installers.sha256", "target/installer-release/SOURCE.tar.gz", "target/installer-release/SOURCE.tar.gz.sha256"]
+build = ["python3", "install/prepare-release.py"]
 
 [dist.github-custom-runners]
 aarch64-apple-darwin = "macos-15"

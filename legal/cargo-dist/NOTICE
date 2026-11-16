@@ -1,0 +1,12 @@
+cargo-dist workflow template
+Copyright (c) 2022-2024 Axo Developer Co.
+
+The generated GitHub release workflow retains cargo-dist's MIT-or-Apache-2.0
+license choice for the upstream template. Its complete license texts are in
+LICENSE-MIT and LICENSE-APACHE beside this notice. The HTMLCut qualification
+overlay is separately AGPL-3.0-only; its owner notice and composite SPDX expression
+are emitted by install/generate-release-workflow.py.
+
+Upstream template source, pinned by dist-workspace.toml:
+https://github.com/axodotdev/cargo-dist/tree/v0.34.0/cargo-dist/templates/ci/github
+License texts obtained from the same v0.34.0 source tag.

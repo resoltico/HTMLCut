@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Cooperative cancellation and a single absolute deadline.
 use crate::{Error, Limit};
 use std::{

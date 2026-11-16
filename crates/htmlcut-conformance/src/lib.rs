@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Repository-only literal fixture discovery and oracle validation.
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 name: CI
 on:
   push:
@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
-  FUZZ_NIGHTLY: nightly-2026-11-09
+  FUZZ_NIGHTLY: nightly-2026-11-16
   FUZZ_TARGET: x86_64-unknown-linux-gnu
   CARGO_DENY_VERSION: 0.20.2
   CARGO_FUZZ_VERSION: 0.13.2
@@ -28,6 +28,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup show
+      - name: Check shared installer source and release staging
+        run: |
+          python3 install/check-sync.py
+          PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s install -p '*_test.py'
+          sh -n install/install.sh
+          bash -n install/install_test.sh
       - name: Keep the minimum Rust version aligned with the development compiler
         shell: bash
         run: |
@@ -43,7 +49,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo doc --workspace --no-deps --locked
         env: { RUSTDOCFLAGS: '-Dwarnings' }
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with: { tool: 'cargo-deny@${{ env.CARGO_DENY_VERSION }}' }
       - run: cargo deny check
   test:
@@ -73,6 +79,38 @@ jobs:
           binary="$PWD/target/${{ matrix.target }}/release/htmlcut"
           if [ "$RUNNER_OS" = Windows ]; then binary="$(cygpath -w "$binary.exe")"; fi
           HTMLCUT_TEST_BINARY="$binary" cargo test -p htmlcut --test conformance --locked --target ${{ matrix.target }}
+      - name: Install the configured cargo-dist for native archive qualification
+        shell: bash
+        run: |
+          dist_version=$(sed -n 's/^cargo-dist-version = "\(.*\)"/\1/p' dist-workspace.toml)
+          test -n "$dist_version"
+          if [ "$RUNNER_OS" = Windows ]; then
+            curl --proto '=https' --proto-redir '=https' -fL -o target/cargo-dist-installer.ps1 "https://github.com/axodotdev/cargo-dist/releases/download/v${dist_version}/cargo-dist-installer.ps1"
+            powershell -NoProfile -ExecutionPolicy ByPass -File "$(cygpath -w "$PWD/target/cargo-dist-installer.ps1")"
+          else
+            curl --proto '=https' --proto-redir '=https' -fL -o target/cargo-dist-installer.sh "https://github.com/axodotdev/cargo-dist/releases/download/v${dist_version}/cargo-dist-installer.sh"
+            sh target/cargo-dist-installer.sh
+          fi
+      - name: Check exact release workflow generation and qualification overlay
+        shell: bash
+        run: python3 install/generate-release-workflow.py --check
+      - name: Build native archives and stage checksum-bound installers
+        shell: bash
+        run: |
+          about_version=$(sed -n 's/.*cargo install cargo-about --version \([^ ]*\).*/\1/p' .github/build-setup.yml)
+          test -n "$about_version"
+          cargo install cargo-about --version "$about_version" --features cli --locked
+          cargo about generate --locked --fail --manifest-path crates/htmlcut/Cargo.toml --config about.toml about.hbs -o THIRD-PARTY-LICENSES.html
+          export MACOSX_DEPLOYMENT_TARGET=12.0
+          dist build --artifacts=local --target '${{ matrix.target }}'
+          python3 install/prepare-test-release.py target/distrib --revision "$GITHUB_SHA"
+      - name: Qualify native Unix installation and recovery
+        if: runner.os != 'Windows'
+        run: bash install/install_test.sh "$PWD/target/distrib"
+      - name: Qualify native Windows installation and recovery
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./install/install_test.ps1 -Dist "$PWD/target/distrib"
   panic-abort:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -89,7 +127,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }
@@ -111,7 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
       - run: cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
       - if: always()
@@ -125,7 +163,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }

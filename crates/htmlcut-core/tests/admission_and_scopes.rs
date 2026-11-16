@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Independent literal oracles for the reviewed range and source admission contracts.
 use htmlcut_core::{Contract, Value};
 fn extract(html: &str, contract: &str, limits: &TestOptions) -> Result<Value, htmlcut_core::Error> {

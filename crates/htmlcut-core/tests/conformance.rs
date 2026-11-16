@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Every executable specification case through the public library.
 use htmlcut_core::{Contract, OutlineOptions};
 use serde_json::Value;

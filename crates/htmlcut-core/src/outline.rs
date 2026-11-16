@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Bounded semantic outlines and their single canonical text encoder.
 use crate::dom::ElementRef;
 use crate::{

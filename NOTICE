@@ -1,41 +1,24 @@
 HTMLCut
 Copyright (c) 2026 Ervins Strauhmanis
 
-Original HTMLCut source is governed by the Mozilla Public License 2.0 (MPL-2.0).
-See LICENSE for the complete terms.
+Original HTMLCut source, tests, tooling and documentation use AGPL-3.0-only.
+See LICENSE for the complete terms and PROJECT-NOTICE.md for source delivery
+and contribution terms. Separate commercial terms are not offered here;
+LICENSE-COMMERCIAL.md describes their status.
 
-This Source Code Form is subject to the terms of the Mozilla Public License,
-v. 2.0. If a copy of the MPL was not distributed with this file, You can
-obtain one at https://mozilla.org/MPL/2.0/.
+Adapted selector bindings and serialization portions in htmlcut-core retain
+their ISC terms and attribution in crates/htmlcut-core/LICENSE-ISC and
+crates/htmlcut-core/NOTICE. Registry dependencies retain their independent
+licenses and notices; they are not relicensed by this project declaration.
+The source release workflow retains cargo-dist's MIT-or-Apache template terms;
+its HTMLCut qualification overlay uses AGPL-3.0-only. Source notices and full
+permissive texts are under legal/cargo-dist in the source archive.
+Existing grants under other licenses remain valid for copies received under
+those terms. The project license does not cover caller-provided HTML or
+extracted third-party content.
 
-Scope
------
-The project license covers original HTMLCut software and project-authored
-associated documentation, configuration and synthetic test fixtures.
-Adapted portions of htmlcut-core retain their ISC terms and attribution in
-crates/htmlcut-core/LICENSE-ISC and crates/htmlcut-core/NOTICE in source
-distributions. Registry dependencies retain their upstream license expressions
-and notices. They are not relicensed by the project license declaration.
-
-The project license does not purport to license caller-provided HTML, captured
-third-party pages or extracted source content. Rights to that content remain
-with the applicable rights holders.
-
-Source availability and third-party terms
-----------------------------------------
-Matching HTMLCut source is available from the source archives on the same
-GitHub release:
-https://github.com/resoltico/HTMLCut/releases
-
-Cargo.lock records exact registry dependency versions; their
-source packages are available from https://crates.io/ using those names and
-versions. Their licenses remain applicable independently of the project license.
-
-Native distributions must include the complete dependency permission/license
-texts and required attributions for their locked build graph, including
-supplementary copyright notices. This project-scope notice is not a complete
-dependency license report.
-
-Mozilla and Firefox are trademarks of the Mozilla Foundation. Names used here
-are descriptive; HTMLCut is not endorsed by the Mozilla Foundation or other
-third-party component authors.
+Matching source and vendored locked dependencies are provided as SOURCE.tar.gz
+alongside the release binaries at https://github.com/resoltico/HTMLCut/releases.
+Keep the matching source archive and required notices with binaries you convey.
+Native distributions include complete dependency license and permission texts
+in THIRD-PARTY-LICENSES.html. This project notice does not replace them.

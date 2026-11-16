@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Complete output bytes, staged beside ordinary destination files.
 use htmlcut_core::Error;
 use std::{

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // A caller prepares its bytes once and reuses a compiled contract.
 use htmlcut_core::{Contract, Document, ParseOptions, ResultLimits, Stop};
 fn main() -> Result<(), Box<dyn std::error::Error>> {

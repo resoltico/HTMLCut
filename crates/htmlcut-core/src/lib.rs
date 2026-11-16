@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 #![doc = include_str!("../README.md")]
 #![deny(missing_docs)]
 mod bounds;

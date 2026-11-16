@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 use htmlcut_core::{CONTRACT_SUMMARY, Contract, Match, Reading};
 fn schema() -> serde_json::Value {
     Contract::schema()

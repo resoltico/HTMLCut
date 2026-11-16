@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 mod support;
 use std::{fs, path::Path};
 fn page(root: &Path) -> std::path::PathBuf {

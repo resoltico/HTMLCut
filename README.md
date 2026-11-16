@@ -6,7 +6,36 @@ Use **outline → author → run → refuse → repair**: inspect a bounded skel
 
 ## Install
 
-Install the CLI with `cargo install htmlcut --locked`, or unpack an archive from [GitHub releases](https://github.com/resoltico/HTMLCut/releases). Put the executable on your PATH. Archives contain the binary, documentation and license notices; there are no installer scripts.
+Install the CLI for your user account on macOS or Linux:
+
+```sh
+curl --proto '=https' --proto-redir '=https' -fL -o ./install-htmlcut.sh https://github.com/resoltico/HTMLCut/releases/latest/download/install.sh &&
+  sh ./install-htmlcut.sh
+```
+
+On Windows, use PowerShell:
+
+```powershell
+& {
+    $ErrorActionPreference = 'Stop'
+    Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile .\install-htmlcut.ps1 -ErrorAction Stop
+    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1
+    if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+}
+```
+
+The installer verifies the native release and records ownership for updates and
+offline uninstall. It preserves an existing executable unless you explicitly
+request backed-up replacement. See the [installation guide](docs/INSTALL.md) to
+inspect the installer before running it, select a release or directory, leave
+PATH unchanged, or [replace or keep an existing executable](docs/INSTALL.md#existing-executable-without-an-installer-receipt).
+Use the printed full executable path with `--version` and `--help` to verify it.
+
+You can also use `cargo install htmlcut --locked` with Rust and a native linker,
+or unpack an archive from [Releases](https://github.com/resoltico/HTMLCut/releases).
+Archives contain the binary, documentation and license notices. Manage a Cargo
+installation through Cargo and a manual installation through the files and PATH
+entry you selected; see [installation methods](docs/INSTALL.md#cargo).
 
 For a clean source checkout, install rustup and a native linker, then build:
 
@@ -91,3 +120,16 @@ curl -fsSL --max-filesize 67108864 -o page.html https://example.test/catalogue \
 Fetching, JavaScript execution, article inference, conversion, pagination, joins and session/network policy belong to other tools. HTMLCut does not execute page scripts or infer business meaning.
 
 For embedding, use [htmlcut-core](crates/htmlcut-core/README.md). Read the [contract language](docs/contract.md), [executable corpus](conformance/README.md), [contributor instructions](CONTRIBUTING.md) and [changelog](CHANGELOG.md).
+
+## Licensing and contributions
+
+Original HTMLCut source, tests, tooling and documentation use **AGPL-3.0-only**.
+Third-party components, including the adapted ISC portions of `htmlcut-core`,
+keep their own licenses and attribution. See [licensing and source](PROJECT-NOTICE.md)
+and [LICENSE](LICENSE). Releases include matching vendored Corresponding Source;
+redistributors must provide source and notices required by the license.
+
+Commercial use is permitted by the AGPL. Separate commercial terms are not
+offered here; see [commercial licensing status](LICENSE-COMMERCIAL.md).
+Contributions use the same public license and grant the owner additional
+relicensing rights under the [contribution terms](PROJECT-NOTICE.md#contribution-terms).

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 use htmlcut_conformance as fixture;
 mod support;
 use std::path::Path;

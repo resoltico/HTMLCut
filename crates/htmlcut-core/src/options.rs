@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Per-parse options and per-result resource limits.
 /// Options applied while admitting a document.
 #[derive(Clone, Debug)]

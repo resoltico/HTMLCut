@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Private admitted tree and immutable selector view.
 use crate::{Error, ParseOptions, stop::Clock};
 use ego_tree::{NodeId, NodeRef, Tree};

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Bounded, iterative admission of parsed matching paths before recursive execution.
 use crate::bounds::MAX_SELECTOR_MATCHING_DEPTH;
 use crate::css::Simple;

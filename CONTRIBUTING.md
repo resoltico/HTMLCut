@@ -1,5 +1,11 @@
 # Contributing
 
+Before submitting, read the [contribution terms](PROJECT-NOTICE.md#contribution-terms).
+Confirm your agreement using the checkbox in the pull request template.
+You retain copyright while granting the public AGPL license and the additional
+relicensing rights described there. The owner reviews and merges changes;
+passing checks do not authorize merging, tagging or publishing.
+
 Install rustup and the platform C/C++ linker toolchain (MSVC build tools on Windows). From a clean checkout, run `cargo test --workspace --locked`. The development compiler and components are declared in [rust-toolchain.toml](rust-toolchain.toml), the MSRV in [Cargo.toml](Cargo.toml), and resolved inputs in [Cargo.lock](Cargo.lock).
 
 ## Checks
@@ -17,7 +23,7 @@ RUSTFLAGS=-Cpanic=abort cargo run --locked --release -p htmlcut-core --example p
 
 Install cargo-deny, cargo-fuzz and cargo-mutants at the versions declared once in CI's top-level environment. For example, read a tool version there and pass it to `cargo install --version VERSION --locked TOOL`; keep its `bin` directory on PATH. When updating the stable compiler in `rust-toolchain.toml`, set `workspace.package.rust-version` in `Cargo.toml` to the same version; the existing check job enforces equality. Native tests run on the four shipped target/runner combinations.
 
-`actionlint` checks all workflows. [.github/actionlint.yaml](.github/actionlint.yaml) scopes reviewed SC2086/SC2129 exceptions to dist's generated release file; handwritten workflows retain full ShellCheck checking. Do not hand-edit generated release YAML: change [dist-workspace.toml](dist-workspace.toml) or [.github/build-setup.yml](.github/build-setup.yml), then run `dist generate` using the configured dist version.
+`actionlint` checks all workflows. [.github/actionlint.yaml](.github/actionlint.yaml) scopes reviewed SC2086/SC2129 exceptions to dist's generated release file; handwritten workflows retain full ShellCheck checking. Do not hand-edit release YAML. Its owner is [the workflow generator](install/generate-release-workflow.py), which combines the configured cargo-dist template with strict pre-upload installer qualification. Change that generator, [dist-workspace.toml](dist-workspace.toml) or [.github/build-setup.yml](.github/build-setup.yml), then run `python3 install/generate-release-workflow.py` with the configured `dist` on PATH. Native CI runs its `--check` mode in an isolated source copy to compare the complete generated file without rewriting the file being checked. Cargo-dist's `allow-dirty = ["ci"]` replaces its raw-template comparison with this stronger owned-template-plus-qualification check; it does not waive workflow validation.
 
 ## Corpus, fuzzing and mutation
 
@@ -45,7 +51,7 @@ HTMLCUT_TEST_BINARY=target/release/htmlcut cargo test -p htmlcut --locked
 cargo package --locked -p htmlcut-core -p htmlcut
 ```
 
-`HTMLCUT_TEST_BINARY` accepts an absolute path or a path relative to the workspace root. Native CI repeats conformance against release-built executables on the same four runners/targets as dist. Archive building uses dist’s pre-build setup hook; executable acceptance runs separately in the native CI matrix. A host run does not verify the other targets or the exact archives built by the release workflow.
+`HTMLCUT_TEST_BINARY` accepts an absolute path or a path relative to the workspace root. Native CI repeats conformance against release-built executables on the same four runners/targets as dist. Archive building uses dist’s pre-build setup hook; native CI qualifies local archives and their installers in addition to executable conformance. A host run does not verify the other targets or the exact archives built by the release workflow.
 
 The conformance helper is an unversioned path dev-dependency omitted from published manifests. cargo-deny's `allow-wildcard-paths` exception applies only to private/dev paths; registry and public production wildcards remain denied. Crate unit tests are self-contained; repository documentation/corpus checks live in integration tests excluded from the published packages.
 
@@ -55,11 +61,120 @@ Commit/push and wait for CI on the final release commit before tagging. The requ
 
 Before tagging, configure crates.io trusted publishing for both `htmlcut-core` and `htmlcut`, using `.github/workflows/publish-crates.yml`. [Trusted publishing](https://crates.io/docs/trusted-publishing) requires an existing crate; an unpublished name needs initial API-token publication. For an initial publication, publish core and then CLI from the clean, CI-approved release commit with a maintainer API token, then configure their trusted publishers before tagging. The tag workflow verifies the source commit recorded inside an existing registry package before skipping that version; a different commit or a dirty-source package fails verification. Missing versions use trusted publishing.
 
-1. Bump the workspace/dependency versions and lockfile.
-2. Move Unreleased notes to the version heading with its release date.
-3. Tag `vX.Y.Z`.
-4. Push the branch and tag.
-5. Dispatch the `Release` workflow with tag `vX.Y.Z` from the source ref to package; dist builds the GitHub release archives and attestations. Use the tagged ref when it supports dispatch.
-6. The publishing workflow uploads htmlcut-core, then htmlcut.
+1. Prepare workspace/dependency versions, lockfile and the dated changelog entry.
+2. Commit and push `main`; wait for its applicable CI checks to pass.
+3. Dispatch the `Release` workflow from `main` with the workspace tag `vX.Y.Z`. It builds, qualifies and publishes the GitHub assets and creates the tag at that source commit.
+4. Confirm the public release and its qualified assets before registry publication.
+5. If tag publication did not start `Publish crates`, dispatch that workflow with the release tag as its ref. It requires the tag to match the workspace version and publishes core before CLI.
 
-Tagging starts registry publication; archive publication requires a separate workflow dispatch. Precise dist builds select only the distributed package, excluding development-only workspace binaries. For an archive packaging repair, use a reviewed ref with application source, dependency lockfile and toolchain identical to the release tag; keep existing tags fixed. Archive attestations identify the actual build ref. Account configuration and any initial API-token publication are maintainer actions. Check both workflow outcomes; a successful archive release does not establish successful registry publication.
+GitHub-token-created tags do not trigger another tag-push workflow. The explicit
+registry dispatch supports this release sequence; an explicit tag push also
+triggers registry publication. Registry checks refuse an existing package whose
+source commit differs, including dirty-source packages. Precise archive builds
+select only the distributed package, excluding development-only workspace
+binaries. Archives and registry packages are separate publications; inspect both
+workflow outcomes. Account configuration and any initial API-token publication
+are maintainer actions.
+
+## Installer verification
+
+The user contract is [installation Help](docs/INSTALL.md). The standalone
+installers and qualification harnesses in `install/` share PDFConcat's reviewed
+AGPL-3.0-only engine; only literal product settings differ. The source revision
+in `install/engine-source.txt` pins that engine. Preserve the upstream SPDX
+headers and [license](LICENSE).
+
+Keep common engine changes synchronized with PDFConcat and its other consumers.
+Copy the canonical scripts and harnesses only after reviewing their commit;
+preserve HTMLCut's product settings and update the source pin. Check source
+parity against that commit, not an uncommitted working tree:
+
+```sh
+python3 install/check-sync.py /absolute/path/to/PDFConcat
+PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s install -p '*_test.py'
+sh -n install/install.sh
+bash -n install/install_test.sh
+```
+
+The check without a checkout argument fetches the pinned source over HTTPS for
+contributor/CI verification. End-user installers never fetch shared engine code
+at runtime. Unix scripts remain POSIX `sh`; PowerShell stays ASCII and supports
+Windows PowerShell 5.1 and PowerShell 7. The Unix qualification suite needs
+Python 3.8+ to isolate process-group interruption cases. The installed CLI and
+standalone installers have no Python dependency.
+
+Cargo-dist's `extra-artifacts` runs `install/prepare-release.py` to produce the
+revision-stamped scripts and `installers.sha256` under `target/installer-release`.
+The source scripts use `main` for Help. Cargo-dist's archive `sha256.sum` excludes
+these extra artifacts, so installer hashes are supplied explicitly.
+
+The generated global-artifact job then runs [strict release qualification](install/qualify-release.py)
+before uploading any global assets. It independently checks the final scripts
+against the source revision, verifies their checksum manifest and the original
+Linux archive checksum, and runs the shared Unix and portable PowerShell suites
+on byte-identical isolated copies. It also authenticates the matching source
+archive and proves an empty-cache offline source build. This step's nonzero status stops the job;
+extra-artifact command status is not used as a qualification gate. Native CI
+qualifies local cargo-dist archives on all four supported targets. Those separate
+builds do not establish native execution of the release archives on macOS or
+Windows. Host-phase attestations cover the release assets, including installers and matching source.
+
+Build local archives with the configured cargo-dist, native target and generated
+third-party notices (see [.github/build-setup.yml](.github/build-setup.yml)):
+
+```sh
+dist build --artifacts=local --target aarch64-apple-darwin
+```
+
+Use the native target from `dist-workspace.toml` on Linux, Intel macOS or Windows.
+Global artifact construction runs on Linux after assembling all local artifacts;
+its strict qualification step requires
+`target/distrib/htmlcut-x86_64-unknown-linux-musl.tar.gz`, the final `sha256.sum`
+consumed by end-user installers, and PowerShell 7 (`pwsh`) for portable checks. A local
+macOS or Windows build should select `--artifacts=local`.
+
+To qualify a local native archive, put that archive and its original `.sha256` sidecar or
+`sha256.sum` in a fresh directory, then add checksum-bound source installers:
+
+```sh
+python3 install/prepare-test-release.py /absolute/fresh/release
+bash install/install_test.sh /absolute/fresh/release
+```
+
+On Windows, run `./install/install_test.ps1 -Dist C:\absolute\fresh\release`.
+The staging helper verifies existing archive hashes and refuses existing installer
+files. Real archive tests cover install/update/removal, receipt integrity, quoted
+recovery commands, backup bytes, PATH effects, changed files, unsafe extraction,
+checksum refusal and interruption. They use isolated HOME/config/install paths.
+Native Windows registry/ACL/running-image cases require Windows CI; portable
+PowerShell checks on macOS do not establish those platform behaviors.
+
+## Corresponding Source
+
+The release producer creates `SOURCE.tar.gz` and `SOURCE.tar.gz.sha256` as explicit
+cargo-dist extra artifacts. [Source capture](install/source-archive.py) copies
+tracked working source, build/install inputs and locked vendored dependencies;
+Cargo target configuration is preserved alongside source replacement settings.
+`SOURCE.txt` identifies the source commit and its timestamp. Keep inputs stable
+while packaging. Untracked source refuses publication; review and add intended
+files to Git's index first. The source snapshot and index are rechecked after
+vendoring so a changed working tree cannot silently produce a mismatched archive.
+
+Strict post-build qualification compares the archive's tracked files with the
+release checkout, checks its identity and checksum, then resolves dependencies
+and builds the CLI offline with an empty Cargo cache. The same resolution command
+must reject a missing vendor directory. This runs automatically before global
+artifact upload; its failure prevents publication. The archive includes the
+project and dependency license texts. Rust, the native linker and unmodified
+general-purpose tools are separate prerequisites.
+
+To build from an extracted source archive with those prerequisites installed:
+
+```sh
+cargo build --offline --locked --release -p htmlcut
+```
+
+Retain the source archive matching any binaries you convey. For modifications,
+provide the complete matching Corresponding Source and affected notices; the
+upstream archive does not cover changes it omits. See
+[licensing and source](PROJECT-NOTICE.md).

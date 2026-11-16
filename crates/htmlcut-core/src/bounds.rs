@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Admission bounds independent of caller policy.
 // Contract grammar bounds; schema copies derive from these authorities.
 pub(crate) const MAX_CONTRACT_BYTES: usize = 256 * 1024;

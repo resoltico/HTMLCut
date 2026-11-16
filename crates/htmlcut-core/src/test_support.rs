@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Test fixture setup, using the public engine API.
 #![allow(dead_code)]
 use htmlcut_core::{Document, Error, ParseOptions, ResultLimits, Stop};

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 mod support;
 use std::process::Stdio;
 fn assert_error(output: std::process::Output, status: i32, code: &str) {

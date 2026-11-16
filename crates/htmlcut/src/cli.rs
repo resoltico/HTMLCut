@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Command grammar and rendering policy.
 use clap::{Args, Parser, Subcommand};
 use htmlcut_core::{ErrorClass, OutlineOptions, ParseOptions, Reading, ResultLimits};

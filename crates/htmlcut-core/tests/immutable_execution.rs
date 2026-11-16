@@ -1,7 +1,7 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 use support::{QueryFixture, compile_query};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 use htmlcut_core::*;
 
 #[test]

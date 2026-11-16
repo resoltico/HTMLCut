@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Admitted upstream selectors and scope-aware matching caches.
 use crate::Error;
 use crate::bounds::{MAX_PATTERN_BYTES, MAX_PATTERN_DEPTH};

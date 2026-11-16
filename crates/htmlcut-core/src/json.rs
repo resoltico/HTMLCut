@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Duplicate-rejecting bounded JSON before map conversion.
 use crate::bounds::MAX_JSON_DEPTH;
 use serde::Deserializer;

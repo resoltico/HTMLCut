@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0 AND ISC
+// SPDX-License-Identifier: AGPL-3.0-only AND ISC
 // Selector trait binding adapted from scraper; see LICENSE-ISC.
 use cssparser::ToCss;
 use html5ever::{LocalName, Namespace};

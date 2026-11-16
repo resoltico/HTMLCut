@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Public result and inspection boundaries, with independent literal output oracles.
 use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 
