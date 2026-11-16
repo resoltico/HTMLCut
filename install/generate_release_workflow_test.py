@@ -35,6 +35,13 @@ class WorkflowGenerationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 generator.overlay(text)
 
+    def test_only_the_owned_dirty_scope_is_overridden_in_the_copy(self):
+        original = '[dist]\nallow-dirty = ["ci"]\n'
+        self.assertEqual(generator.upstream_configuration(original), '[dist]\nallow-dirty = []\n')
+        for text in ['[dist]\n', original + 'allow-dirty = ["ci"]\n', '[dist]\nallow-dirty = ["ci", "msi"]\n', original + 'allow-dirty = []\n']:
+            with self.assertRaisesRegex(ValueError, "exactly the owned"):
+                generator.upstream_configuration(text)
+
 
 if __name__ == "__main__":
     unittest.main()

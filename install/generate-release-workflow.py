@@ -31,6 +31,38 @@ def overlay(text: str) -> str:
     return text[:start] + job + text[end:]
 
 
+def upstream_configuration(text: str) -> str:
+    entries = re.findall(r"^[ \t]*allow-dirty[ \t]*=.*$", text, re.MULTILINE)
+    if entries != ['allow-dirty = ["ci"]']:
+        raise ValueError("Expected exactly the owned allow-dirty = [\"ci\"] scope")
+    # cargo-dist also skips generation for dirty targets. Enable raw generation
+    # only in the disposable copy; the actual source retains its narrow scope.
+    return re.sub(r'^allow-dirty = \["ci"\]$', "allow-dirty = []", text, count=1, flags=re.MULTILINE)
+
+
+def generated_workflow(root: Path) -> bytes:
+    listing = subprocess.check_output(
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root
+    )
+    with tempfile.TemporaryDirectory(prefix="htmlcut-workflow-source-") as tmp:
+        isolated = Path(tmp)
+        for raw in sorted(set(listing.split(b"\0")) - {b""}):
+            name = os.fsdecode(raw)
+            if name.split("/", 1)[0] in {".git", "target"}:
+                continue
+            source = root / name
+            if not source.is_file():
+                continue
+            destination = isolated / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+        configuration = isolated / "dist-workspace.toml"
+        configuration.write_bytes(upstream_configuration(configuration.read_text()).encode("utf-8"))
+        environment = dict(os.environ, CARGO_TARGET_DIR=str(isolated / "target"))
+        subprocess.run(["dist", "generate"], cwd=isolated, env=environment, check=True)
+        return overlay((isolated / ".github/workflows/release.yml").read_text()).encode("utf-8")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true")
@@ -44,33 +76,12 @@ def main():
     if actual != "cargo-dist " + configured:
         parser.exit(1, f"Use configured cargo-dist {configured}; found {actual}\n")
     workflow = root / ".github/workflows/release.yml"
+    expected = generated_workflow(root)
     if args.check:
-        original = workflow.read_bytes()
-        # Generate from the intended working source in an owned disposable copy;
-        # the file being checked is never overwritten, even temporarily.
-        listing = subprocess.check_output(
-            ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard"], cwd=root
-        )
-        with tempfile.TemporaryDirectory(prefix="htmlcut-workflow-source-") as tmp:
-            isolated = Path(tmp)
-            for raw in sorted(set(listing.split(b"\0")) - {b""}):
-                name = os.fsdecode(raw)
-                if name.split("/", 1)[0] in {".git", "target"}:
-                    continue
-                source = root / name
-                if not source.is_file():
-                    continue
-                destination = isolated / name
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(source, destination)
-            environment = dict(os.environ, CARGO_TARGET_DIR=str(isolated / "target"))
-            subprocess.run(["dist", "generate"], cwd=isolated, env=environment, check=True)
-            expected = overlay((isolated / ".github/workflows/release.yml").read_text()).encode("utf-8")
-        if original != expected:
+        if workflow.read_bytes() != expected:
             parser.exit(1, "Release workflow is stale; run python3 install/generate-release-workflow.py\n")
     else:
-        subprocess.run(["dist", "generate"], cwd=root, check=True)
-        workflow.write_bytes(overlay(workflow.read_text()).encode("utf-8"))
+        workflow.write_bytes(expected)
 
 
 if __name__ == "__main__":
