@@ -12,6 +12,11 @@ Scope
 -----
 The project license covers original HTMLCut software and project-authored
 associated documentation, configuration and synthetic test fixtures.
+The shared PDFConcat installer engine and its qualification scripts under
+install/ retain their AGPL-3.0-only terms and SPDX headers; see
+https://github.com/resoltico/HTMLCut/blob/main/LICENSE-INSTALLER. They install the independent MPL-2.0 HTMLCut executable
+without linking it. Their reviewed source revision is recorded in
+install/engine-source.txt.
 Adapted portions of htmlcut-core retain their ISC terms and attribution in
 crates/htmlcut-core/LICENSE-ISC and crates/htmlcut-core/NOTICE in source
 distributions. Registry dependencies retain their upstream license expressions
