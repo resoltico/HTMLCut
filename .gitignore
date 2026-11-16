@@ -22,3 +22,7 @@ Desktop.ini
 
 # Generated release license notices.
 /THIRD-PARTY-LICENSES.html
+
+# Generated cargo-dist workflow manifests.
+/dist-manifest.json
+/plan-dist-manifest.json

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Generate cargo-dist's workflow with the required pre-upload qualification."""
 import argparse
 from pathlib import Path
@@ -27,8 +27,17 @@ def overlay(text: str) -> str:
     marker = '      - name: "Upload artifacts"\n'
     if job.count(marker) != 1 or QUALIFICATION in text:
         raise ValueError("Expected one unmodified global artifact upload step")
+    upstream_license = "# SPDX-License-Identifier: MIT or Apache-2.0\n"
+    if text.count(upstream_license) != 1:
+        raise ValueError("Expected one upstream cargo-dist workflow license notice")
     job = job.replace(marker, QUALIFICATION + marker, 1)
-    return text[:start] + job + text[end:]
+    generated = text[:start] + job + text[end:]
+    notice = (
+        "# SPDX-License-Identifier: (MIT OR Apache-2.0) AND AGPL-3.0-only\n"
+        "# HTMLCut qualification overlay: Copyright (c) 2026 Ervins Strauhmanis.\n"
+        "# Upstream template terms and source: legal/cargo-dist/NOTICE.\n"
+    )
+    return generated.replace(upstream_license, notice, 1)
 
 
 def upstream_configuration(text: str) -> str:

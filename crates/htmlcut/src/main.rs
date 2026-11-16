@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Local snapshot command, with one diagnostic and cooperative compute cancellation.
 mod cli;
 mod input;

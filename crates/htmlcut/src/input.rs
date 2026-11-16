@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Bounded snapshot and UTF-8 contract acquisition.
 use htmlcut_core::{Contract, Error, Limit, Stop};
 use std::{

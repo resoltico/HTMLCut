@@ -1,5 +1,11 @@
 # Contributing
 
+Before submitting, read the [contribution terms](PROJECT-NOTICE.md#contribution-terms).
+Confirm your agreement using the checkbox in the pull request template.
+You retain copyright while granting the public AGPL license and the additional
+relicensing rights described there. The owner reviews and merges changes;
+passing checks do not authorize merging, tagging or publishing.
+
 Install rustup and the platform C/C++ linker toolchain (MSVC build tools on Windows). From a clean checkout, run `cargo test --workspace --locked`. The development compiler and components are declared in [rust-toolchain.toml](rust-toolchain.toml), the MSRV in [Cargo.toml](Cargo.toml), and resolved inputs in [Cargo.lock](Cargo.lock).
 
 ## Checks
@@ -75,9 +81,8 @@ are maintainer actions.
 The user contract is [installation Help](docs/INSTALL.md). The standalone
 installers and qualification harnesses in `install/` share PDFConcat's reviewed
 AGPL-3.0-only engine; only literal product settings differ. The source revision
-in `install/engine-source.txt` pins that engine, independently of HTMLCut's
-MPL-2.0 executable. Preserve the upstream SPDX headers and
-[installer license](LICENSE-INSTALLER).
+in `install/engine-source.txt` pins that engine. Preserve the upstream SPDX
+headers and [license](LICENSE).
 
 Keep common engine changes synchronized with PDFConcat and its other consumers.
 Copy the canonical scripts and harnesses only after reviewing their commit;
@@ -107,11 +112,12 @@ The generated global-artifact job then runs [strict release qualification](insta
 before uploading any global assets. It independently checks the final scripts
 against the source revision, verifies their checksum manifest and the original
 Linux archive checksum, and runs the shared Unix and portable PowerShell suites
-on byte-identical isolated copies. This step's nonzero status stops the job;
+on byte-identical isolated copies. It also authenticates the matching source
+archive and proves an empty-cache offline source build. This step's nonzero status stops the job;
 extra-artifact command status is not used as a qualification gate. Native CI
 qualifies local cargo-dist archives on all four supported targets. Those separate
 builds do not establish native execution of the release archives on macOS or
-Windows. Host-phase attestations include the installer scripts and their manifest.
+Windows. Host-phase attestations cover the release assets, including installers and matching source.
 
 Build local archives with the configured cargo-dist, native target and generated
 third-party notices (see [.github/build-setup.yml](.github/build-setup.yml)):
@@ -142,3 +148,33 @@ recovery commands, backup bytes, PATH effects, changed files, unsafe extraction,
 checksum refusal and interruption. They use isolated HOME/config/install paths.
 Native Windows registry/ACL/running-image cases require Windows CI; portable
 PowerShell checks on macOS do not establish those platform behaviors.
+
+## Corresponding Source
+
+The release producer creates `SOURCE.tar.gz` and `SOURCE.tar.gz.sha256` as explicit
+cargo-dist extra artifacts. [Source capture](install/source-archive.py) copies
+tracked working source, build/install inputs and locked vendored dependencies;
+Cargo target configuration is preserved alongside source replacement settings.
+`SOURCE.txt` identifies the source commit and its timestamp. Keep inputs stable
+while packaging. Untracked source refuses publication; review and add intended
+files to Git's index first. The source snapshot and index are rechecked after
+vendoring so a changed working tree cannot silently produce a mismatched archive.
+
+Strict post-build qualification compares the archive's tracked files with the
+release checkout, checks its identity and checksum, then resolves dependencies
+and builds the CLI offline with an empty Cargo cache. The same resolution command
+must reject a missing vendor directory. This runs automatically before global
+artifact upload; its failure prevents publication. The archive includes the
+project and dependency license texts. Rust, the native linker and unmodified
+general-purpose tools are separate prerequisites.
+
+To build from an extracted source archive with those prerequisites installed:
+
+```sh
+cargo build --offline --locked --release -p htmlcut
+```
+
+Retain the source archive matching any binaries you convey. For modifications,
+provide the complete matching Corresponding Source and affected notices; the
+upstream archive does not cover changes it omits. See
+[licensing and source](PROJECT-NOTICE.md).

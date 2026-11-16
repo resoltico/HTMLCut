@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Byte decoding and incremental upstream tree admission.
 use crate::dom::{Html, TreeBuilder};
 use crate::{Error, ParseOptions, stop::Clock};

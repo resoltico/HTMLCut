@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Convert literal corpus inputs, optionally adding raw admission documents.
 use std::{
     fs,

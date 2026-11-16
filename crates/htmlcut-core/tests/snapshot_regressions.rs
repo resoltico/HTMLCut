@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Retained authored snapshots protect original-tree repair and lexical row values.
 use htmlcut_core::{Contract, Value};
 #[test]

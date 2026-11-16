@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Bounded composed scalar cases with an oracle independent of materialization accounting.
 use htmlcut_core::{Contract, ErrorCode, ExportFormat, Value};
 

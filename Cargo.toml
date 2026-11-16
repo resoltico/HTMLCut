@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 [workspace]
 members = [
     "crates/htmlcut-core",
@@ -18,7 +18,7 @@ version = "25.0.0"
 edition = "2024"
 rust-version = "1.100.0"
 description = "Fail-closed extraction contracts for caller-owned HTML snapshots, with complete compact results."
-license = "MPL-2.0"
+license = "AGPL-3.0-only"
 authors = ["Ervins Strauhmanis"]
 repository = "https://github.com/resoltico/HTMLCut"
 

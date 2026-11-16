@@ -120,3 +120,16 @@ curl -fsSL --max-filesize 67108864 -o page.html https://example.test/catalogue \
 Fetching, JavaScript execution, article inference, conversion, pagination, joins and session/network policy belong to other tools. HTMLCut does not execute page scripts or infer business meaning.
 
 For embedding, use [htmlcut-core](crates/htmlcut-core/README.md). Read the [contract language](docs/contract.md), [executable corpus](conformance/README.md), [contributor instructions](CONTRIBUTING.md) and [changelog](CHANGELOG.md).
+
+## Licensing and contributions
+
+Original HTMLCut source, tests, tooling and documentation use **AGPL-3.0-only**.
+Third-party components, including the adapted ISC portions of `htmlcut-core`,
+keep their own licenses and attribution. See [licensing and source](PROJECT-NOTICE.md)
+and [LICENSE](LICENSE). Releases include matching vendored Corresponding Source;
+redistributors must provide source and notices required by the license.
+
+Commercial use is permitted by the AGPL. Separate commercial terms are not
+offered here; see [commercial licensing status](LICENSE-COMMERCIAL.md).
+Contributions use the same public license and grant the owner additional
+relicensing rights under the [contribution terms](PROJECT-NOTICE.md#contribution-terms).

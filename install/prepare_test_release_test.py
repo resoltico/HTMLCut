@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Keep local qualification from laundering changed release archives."""
 import hashlib
 import importlib.util

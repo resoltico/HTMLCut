@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! The contract's typed JSON surface and its derived authoring schema.
 use crate::bounds::*;
 use schemars::JsonSchema;

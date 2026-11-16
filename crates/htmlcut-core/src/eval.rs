@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 //! Scope-relative recursive contract evaluation, with complete-result admission.
 use crate::dom::{ElementRef, Node as DomNode};
 use crate::{

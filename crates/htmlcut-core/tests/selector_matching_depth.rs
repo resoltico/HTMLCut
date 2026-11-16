@@ -1,6 +1,6 @@
 use support::{DocumentFixture, TestOptions, parse_fixture};
 mod support;
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Run admitted selectors at the consumer thread/process boundary where stack aborts occurred.
 use htmlcut_core::{Contract, ErrorCode, OutlineOptions};
 use serde_json::json;

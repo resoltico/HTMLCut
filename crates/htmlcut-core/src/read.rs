@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0 AND ISC
+// SPDX-License-Identifier: AGPL-3.0-only AND ISC
 //! Deterministic structural text and original-tree readings.
 use crate::dom::Node;
 use crate::{Document, Error, Reading, eval::Scope, stop::Clock};

@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Standalone installer checksum artifacts identify the generated script bytes."""
 import hashlib
 import importlib.util
@@ -21,7 +21,7 @@ class ReleaseGeneratorTests(unittest.TestCase):
             shutil.copyfile(Path(__file__).with_name("prepare-installers.py"), source / "prepare-installers.py")
             (source / "install.sh").write_text("docs_revision='main'\n")
             (source / "install.ps1").write_bytes(b"$documentationRevision = 'main'\r\n")
-            generator.prepare(root, "a" * 40)
+            generator.prepare_installers(root, "a" * 40)
             output = root / "target/installer-release"
             self.assertEqual(set(path.name for path in output.iterdir()), {"install.sh", "install.ps1", "installers.sha256"})
             entries = (output / "installers.sha256").read_text().splitlines()

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0 AND ISC
+// SPDX-License-Identifier: AGPL-3.0-only AND ISC
 // Selector element binding adapted from scraper; see LICENSE-ISC.
 use html5ever::Namespace;
 use html5ever::ns;

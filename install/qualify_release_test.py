@@ -1,4 +1,4 @@
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Release consumption rejects stale scripts and invalid installer manifests."""
 import hashlib
 import importlib.util

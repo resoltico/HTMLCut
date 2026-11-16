@@ -184,8 +184,9 @@ It never executes an untracked executable to identify it. Follow the
 [replace or keep instructions](#existing-executable-without-an-installer-receipt)
 when a regular executable exists without installer state.
 
-The private legal directory retains `LICENSE`, `NOTICE` and
-`THIRD-PARTY-LICENSES.html` from the archive. Receipts are data, not shell code.
+The private legal directory retains `LICENSE`, `NOTICE`,
+`PROJECT-NOTICE.md`, `LICENSE-COMMERCIAL.md` and `THIRD-PARTY-LICENSES.html`
+from the archive. Receipts are data, not shell code.
 An intact receipt with only the executable missing permits repair by reinstalling
 or cleanup by uninstalling. Remaining owned files must still verify. Never edit
 hashes to bypass refusal, copy receipts between directories, or delete a shared
@@ -272,10 +273,11 @@ against accidental replacement, not another hostile process using your account.
 It does not bypass Gatekeeper, SmartScreen or managed-device policy. Mac builds
 are not Developer ID signed or notarized; Windows builds are unsigned.
 
-The independent shared installer engine and its qualification scripts retain
-AGPL-3.0-only terms from PDFConcat; see [LICENSE-INSTALLER](../LICENSE-INSTALLER)
-and the reviewed source pin in `install/engine-source.txt`. HTMLCut's application
-and library retain MPL-2.0. Source is shipped separately on the matching release;
-see [NOTICE](../NOTICE). Release artifact attestations can be verified separately
+Original HTMLCut software, installers, tests and documentation use AGPL-3.0-only;
+see [LICENSE](../LICENSE), [licensing and source](../PROJECT-NOTICE.md) and
+[NOTICE](../NOTICE). Adapted ISC portions and registry dependencies retain their
+own terms. Matching vendored source is provided separately as `SOURCE.tar.gz` on
+the same release. The shared installer engine's reviewed source revision is in
+`install/engine-source.txt`. Release artifact attestations can be verified separately
 with `gh attestation verify ASSET --repo resoltico/HTMLCut`; the installer does not
 claim to authenticate them.

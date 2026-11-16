@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 // Public consumer for ordinary parser refusals, also executed with panic=abort.
 use htmlcut_core::{Contract, Document, ParseOptions, ResultLimits, Stop, Value};
 fn main() {

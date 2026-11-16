@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: MPL-2.0
+# SPDX-License-Identifier: AGPL-3.0-only
 """Add checksum-bound installers to a fresh copy of cargo-dist release assets."""
 import argparse
 import hashlib

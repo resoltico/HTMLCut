@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MPL-2.0
+// SPDX-License-Identifier: AGPL-3.0-only
 #![no_main]
 use htmlcut_core::{
     Contract, Document, ErrorCode, ExportFormat, OutlineOptions, ParseOptions, ResultLimits,
