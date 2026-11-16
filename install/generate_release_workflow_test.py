@@ -11,10 +11,16 @@ spec.loader.exec_module(generator)
 BASE = '''jobs:
   build-local-artifacts:
       - name: "Upload artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/distrib/
   build-global-artifacts:
       - name: Build global artifacts
         run: dist build --artifacts=global
       - name: "Upload artifacts"
+        uses: actions/upload-artifact@v7
+        with:
+          path: target/distrib/
   # Determines if we should publish/announce
   host:
 '''
