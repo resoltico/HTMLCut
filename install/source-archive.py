@@ -19,8 +19,10 @@ def git(root, *args):
 
 
 def tracked_source(root):
-    if git(root, "ls-files", "--others", "--exclude-standard", "-z"):
-        raise ValueError("Untracked source files exist; add intended files to Git's index before packaging")
+    unknown = git(root, "ls-files", "--others", "--exclude-standard", "-z")
+    if unknown:
+        names = ", ".join(repr(os.fsdecode(name)) for name in unknown.split(b"\0") if name)
+        raise ValueError(f"Untracked source files exist: {names}. Add intended files to Git's index before packaging")
     index = git(root, "ls-files", "--stage", "-z")
     entries = []
     for entry in index.split(b"\0"):

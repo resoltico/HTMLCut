@@ -7,6 +7,7 @@ import importlib.util
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -42,6 +43,8 @@ def qualify(root: Path, directory: Path, revision: str) -> None:
 
 
 def main():
+    # Local imports must not add bytecode files to the captured checkout.
+    sys.dont_write_bytecode = True
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     args = parser.parse_args()
