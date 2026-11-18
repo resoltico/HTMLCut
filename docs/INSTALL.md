@@ -26,7 +26,7 @@ sh ./install-htmlcut.sh --install-dir "$HOME/.local/bin" --replace-unmanaged
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1 -InstallDir "$env:LOCALAPPDATA\Programs\HTMLCut" -ReplaceUnmanaged
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-htmlcut.ps1') -InstallDir "$env:LOCALAPPDATA\Programs\HTMLCut" -ReplaceUnmanaged
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
@@ -43,7 +43,7 @@ sh ./install-htmlcut.sh --install-dir "$HOME/htmlcut-cli" --no-modify-path
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1 -InstallDir "$env:LOCALAPPDATA\HTMLCut-CLI" -NoModifyPath
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-htmlcut.ps1') -InstallDir "$env:LOCALAPPDATA\HTMLCut-CLI" -NoModifyPath
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
@@ -87,20 +87,33 @@ If curl is unavailable, use `wget --https-only -O ./install-htmlcut.sh URL` with
 the same URL and `&&` chain. The installer needs standard shell tools, tar and a
 SHA-256 tool (`sha256sum`, `shasum` or `openssl`). `less` is only for review.
 
+On Windows, the download saves `install-htmlcut.ps1` in your home directory.
+
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile .\install-htmlcut.ps1 -ErrorAction Stop
-    Get-Content .\install-htmlcut.ps1
-    powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1
-    if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+    $startingLocation = Get-Location
+    Set-Location -LiteralPath $HOME
+    try {
+        Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile .\install-htmlcut.ps1 -ErrorAction Stop
+        Get-Content -LiteralPath .\install-htmlcut.ps1
+        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1
+        if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+    } finally {
+        Set-Location -LiteralPath $startingLocation.Path
+    }
 }
 ```
 
-To pause for review, stop after download, inspect the file, then run the child
-command. The guarded downloads prevent a failed fetch from executing an old
-saved installer and preserve installer failure status. A bare `curl | sh` can
-hide a failed download behind a successful empty shell.
+To pause for review on Windows, run `Set-Location -LiteralPath $HOME`, then enter
+the download, inspection and child commands separately. Run the child command
+only after the download succeeds and you have reviewed the file. The Windows
+examples that reuse the saved installer point to the home directory. If you saved
+the reviewed installer elsewhere, use its full path.
+
+The guarded downloads prevent a failed fetch from executing an old saved
+installer and preserve installer failure status. A bare `curl | sh` can hide a
+failed download behind a successful empty shell.
 
 Windows PowerShell 5.1 and PowerShell 7 are supported; use `pwsh` instead of
 `powershell` to select PowerShell 7. `ByPass` applies to the child process only;
@@ -216,7 +229,7 @@ sh ./install-htmlcut.sh --uninstall
 ```
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1 -Uninstall
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-htmlcut.ps1') -Uninstall
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
