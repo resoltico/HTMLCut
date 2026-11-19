@@ -75,7 +75,10 @@ powershell -NoProfile -ExecutionPolicy ByPass -File .\install\install.ps1
 if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
 ```
 
-To use a standalone release installer, save, inspect and run it:
+Use the [README quick install](../README.md#install) to run the latest release
+installer without keeping a copy after success. For inspection or offline
+uninstall, save a copy explicitly. On macOS or Linux, save it in your current
+directory, inspect it, then run it:
 
 ```sh
 curl --proto '=https' --proto-redir '=https' -fL -o ./install-htmlcut.sh https://github.com/resoltico/HTMLCut/releases/latest/download/install.sh &&
@@ -87,33 +90,27 @@ If curl is unavailable, use `wget --https-only -O ./install-htmlcut.sh URL` with
 the same URL and `&&` chain. The installer needs standard shell tools, tar and a
 SHA-256 tool (`sha256sum`, `shasum` or `openssl`). `less` is only for review.
 
-On Windows, the download saves `install-htmlcut.ps1` in your home directory.
+On Windows, save the installer in your home directory and display it for review:
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $startingLocation = Get-Location
-    Set-Location -LiteralPath $HOME
-    try {
-        Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile .\install-htmlcut.ps1 -ErrorAction Stop
-        Get-Content -LiteralPath .\install-htmlcut.ps1
-        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1
-        if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
-    } finally {
-        Set-Location -LiteralPath $startingLocation.Path
-    }
+    $installer = Join-Path $HOME 'install-htmlcut.ps1'
+    Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile $installer
+    Get-Content -LiteralPath $installer
 }
 ```
 
-To pause for review on Windows, run `Set-Location -LiteralPath $HOME`, then enter
-the download, inspection and child commands separately. Run the child command
-only after the download succeeds and you have reviewed the file. The Windows
-examples that reuse the saved installer point to the home directory. If you saved
-the reviewed installer elsewhere, use its full path.
+After the download succeeds and you have reviewed the file, run it:
 
-The guarded downloads prevent a failed fetch from executing an old saved
-installer and preserve installer failure status. A bare `curl | sh` can hide a
-failed download behind a successful empty shell.
+```powershell
+powershell -NoProfile -ExecutionPolicy ByPass -File (Join-Path $HOME 'install-htmlcut.ps1')
+if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+```
+
+If you saved the reviewed installer elsewhere, substitute its full path in all
+examples that use it. Keep the download-success check in automation and propagate
+an unsuccessful installer exit to the caller.
 
 Windows PowerShell 5.1 and PowerShell 7 are supported; use `pwsh` instead of
 `powershell` to select PowerShell 7. `ByPass` applies to the child process only;
