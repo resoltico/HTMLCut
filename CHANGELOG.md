@@ -4,6 +4,8 @@ Notable changes to this project are documented in this file. The format is based
 
 ## [Unreleased]
 
+- The [quick install](README.md#install) leaves no installer file after success on macOS, Linux or Windows. Save the installer separately for offline uninstall.
+
 ## [25.0.0] - 2026-11-16
 
 - Original software, tooling and documentation use AGPL-3.0-only. Redistributors must provide matching Corresponding Source; existing MPL grants and third-party terms remain valid.

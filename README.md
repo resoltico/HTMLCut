@@ -9,32 +9,45 @@ Use **outline → author → run → refuse → repair**: inspect a bounded skel
 Install the CLI for your user account on macOS or Linux:
 
 ```sh
-curl --proto '=https' --proto-redir '=https' -fL -o ./install-htmlcut.sh https://github.com/resoltico/HTMLCut/releases/latest/download/install.sh &&
-  sh ./install-htmlcut.sh
+sh -c '
+    installer=$(curl --proto "=https" --proto-redir "=https" -fsSL \
+        https://github.com/resoltico/HTMLCut/releases/latest/download/install.sh) &&
+    printf "%s\n" "$installer" | sh
+'
 ```
 
-On Windows, use PowerShell. The command saves `install-htmlcut.ps1` in your home directory:
+On Windows, use PowerShell:
 
 ```powershell
 & {
     $ErrorActionPreference = 'Stop'
-    $startingLocation = Get-Location
-    Set-Location -LiteralPath $HOME
+    $installerDirectory = Join-Path ([IO.Path]::GetTempPath()) "htmlcut-install-$([guid]::NewGuid())"
+    New-Item -ItemType Directory -Path $installerDirectory | Out-Null
+    $installer = Join-Path $installerDirectory 'install-htmlcut.ps1'
+    $keepInstaller = $false
     try {
-        Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile .\install-htmlcut.ps1 -ErrorAction Stop
-        powershell -NoProfile -ExecutionPolicy ByPass -File .\install-htmlcut.ps1
+        Invoke-WebRequest -UseBasicParsing -Uri https://github.com/resoltico/HTMLCut/releases/latest/download/install.ps1 -OutFile $installer
+        $keepInstaller = $true
+        powershell -NoProfile -ExecutionPolicy ByPass -File $installer
         if ($LASTEXITCODE -ne 0) { throw "Installer failed ($LASTEXITCODE)." }
+        $keepInstaller = $false
     } finally {
-        Set-Location -LiteralPath $startingLocation.Path
+        if ($keepInstaller) {
+            Write-Warning "Installer saved for retry at $installer"
+        } else {
+            Remove-Item -LiteralPath $installerDirectory -Recurse -Force
+        }
     }
 }
 ```
 
-The installer verifies the native release and records ownership for updates and
-offline uninstall. It preserves an existing executable unless you explicitly
-request backed-up replacement. See the [installation guide](docs/INSTALL.md) to
-inspect the installer before running it, select a release or directory, leave
-PATH unchanged, or [replace or keep an existing executable](docs/INSTALL.md#existing-executable-without-an-installer-receipt).
+These commands run the release installer after the download succeeds, with no
+installer file left after a successful install. The installer verifies the native
+release and records ownership for updates and uninstall. It preserves an existing
+executable unless you explicitly request backed-up replacement. See the
+[installation guide](docs/INSTALL.md) to save and inspect the installer, keep it
+for offline uninstall, select a release or directory, leave PATH unchanged, or
+[replace or keep an existing executable](docs/INSTALL.md#existing-executable-without-an-installer-receipt).
 Use the printed full executable path with `--version` and `--help` to verify it.
 
 You can also use `cargo install htmlcut --locked` with Rust and a native linker,
