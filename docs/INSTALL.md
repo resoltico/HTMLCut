@@ -150,10 +150,16 @@ on PATH. For the usual default directories:
 & "$env:LOCALAPPDATA\Programs\HTMLCut\htmlcut.exe" --help
 ```
 
-Use the printed path for `XDG_BIN_HOME` or custom directories. After opening a
-new terminal, `command -v htmlcut` on Unix or `Get-Command htmlcut` in PowerShell
-shows which command PATH selects. Do not remove an unrelated installation merely
-because it shadows the new executable.
+Use the printed path for `XDG_BIN_HOME` or custom directories.
+
+## Troubleshooting
+
+If the installer reports another HTMLCut executable on PATH, that copy takes
+precedence in the installer session. Use the full path printed by the installer
+to run the new copy. Open a new terminal to pick up saved PATH changes, then run
+`command -v htmlcut` on macOS or Linux or `Get-Command htmlcut.exe` in PowerShell
+to see what that shell resolves. If you choose to remove an older copy, use the
+method that installed it.
 
 ## Update and choose a release
 

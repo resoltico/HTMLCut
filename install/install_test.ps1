@@ -875,6 +875,27 @@ try {
         Check 'installed executable extracts a heading' ($LASTEXITCODE -eq 0 -and $extracted -ceq '"Installer smoke"')
         Check 'installation reported' ((Get-Output) -match 'is installed')
         Check 'custom uninstall path is quoted' ((Get-Output).Contains("-InstallDir '" + $dir.Replace("'", "''") + "'"))
+
+        $otherDir = Join-Path $work "$shellName-other copy"
+        [void][IO.Directory]::CreateDirectory($otherDir)
+        $otherExe = Join-Path $otherDir ($command + '.exe')
+        [IO.File]::Copy($exe, $otherExe)
+        $otherHash = (Get-FileHash -LiteralPath $otherExe).Hash
+        $originalSessionPath = $env:Path
+        $pathWarning = "The installer session finds another $command.exe"
+        try {
+            $env:Path = "$otherDir;$dir;$originalSessionPath"
+            Check 'install succeeds when another copy wins on PATH' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
+            $pathOutput = Get-Output
+            Check 'PATH warning names the winning executable' ($pathOutput.Contains("${pathWarning}: $otherExe"))
+            Check 'PATH warning retains the quoted installed executable' ($pathOutput.Contains("Get started: & '" + $exe.Replace("'", "''") + "' --help"))
+
+            $env:Path = "$dir;$otherDir;$originalSessionPath"
+            Check 'install succeeds when the new copy wins on PATH' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
+            Check 'PATH warning is absent when the new copy wins' (-not (Get-Output).Contains($pathWarning))
+            Check 'the competing executable remains unchanged' ((Get-FileHash -LiteralPath $otherExe).Hash -ceq $otherHash)
+        } finally { $env:Path = $originalSessionPath }
+
         Check 'reinstall succeeds' ((Invoke-Installer $shell @('-InstallDir', $dir, '-NoModifyPath')) -eq 0)
         Check 'reinstall reported' ((Get-Output) -match 'reinstalled')
         Remove-Item -LiteralPath $exe
