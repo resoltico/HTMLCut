@@ -5,6 +5,8 @@ Notable changes to this project are documented in this file. The format is based
 ## [Unreleased]
 
 - The [quick install](README.md#install) leaves no installer file after success on macOS, Linux or Windows. Save the installer separately for offline uninstall.
+- On Windows, the installer reports when another HTMLCut executable takes precedence on PATH. [Installation](docs/INSTALL.md#troubleshooting)
+- Update the `url` dependency to 2.5.9 to address RUSTSEC-2026-0592.
 
 ## [25.0.0] - 2026-11-16
 
