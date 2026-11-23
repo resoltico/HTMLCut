@@ -167,9 +167,10 @@ jobs:
           --timeout-multiplier 5 -j 2 --cargo-arg=--locked
       - name: Test conformance helper mutations against their consumers
         if: matrix.shard == 'conformance'
+        # cargo-mutants times the helper alone for this filtered baseline.
         run: >-
           cargo mutants -p htmlcut-conformance --test-workspace=true
-          --timeout-multiplier 5 -j 2 --cargo-arg=--locked
+          --minimum-test-timeout 120 --timeout-multiplier 5 -j 2 --cargo-arg=--locked
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with: { name: 'mutants-${{ matrix.shard }}', path: mutants.out, retention-days: 14 }

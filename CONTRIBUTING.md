@@ -41,10 +41,10 @@ The generator keeps existing admission entries and rejects content-hash collisio
 cargo mutants --workspace --exclude 'crates/htmlcut-conformance/**' \
   --exclude-re windows_device --timeout-multiplier 5 -j 2 --cargo-arg=--locked
 cargo mutants -p htmlcut-conformance --test-workspace=true \
-  --timeout-multiplier 5 -j 2 --cargo-arg=--locked
+  --minimum-test-timeout 120 --timeout-multiplier 5 -j 2 --cargo-arg=--locked
 ```
 
-Scheduled and manually dispatched CI divide the first command into shards, publish a report for each shard and run the second command once. The helper's mutants run against the workspace because both the CLI and core tests use its assertions. A native Windows job tests the `windows_device` mutants on every CI run. Review survivors and timeouts as a human release step. The full mutation and longer fuzz campaigns run separately from ordinary push and pull request CI.
+Scheduled and manually dispatched CI divide the first command into shards, publish a report for each shard and run the second command once. The helper's mutants run against the workspace because both the CLI and core tests use its assertions. The timeout floor accounts for the workspace suite running longer than the helper-only baseline. A native Windows job tests the `windows_device` mutants on every CI run. Review survivors and timeouts as a human release step. The full mutation and longer fuzz campaigns run separately from ordinary push and pull request CI.
 
 ## Delivered binaries and packaging
 
