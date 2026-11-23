@@ -17,7 +17,7 @@ env:
   CARGO_TERM_COLOR: always
   FUZZ_NIGHTLY: nightly-2026-11-16
   FUZZ_TARGET: x86_64-unknown-linux-gnu
-  CARGO_DENY_VERSION: 0.20.2
+  CARGO_DENY_VERSION: 0.22.0
   CARGO_FUZZ_VERSION: 0.13.2
   CARGO_MUTANTS_VERSION: 27.1.0
 jobs:
@@ -49,7 +49,7 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo doc --workspace --no-deps --locked
         env: { RUSTDOCFLAGS: '-Dwarnings' }
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with: { tool: 'cargo-deny@${{ env.CARGO_DENY_VERSION }}' }
       - run: cargo deny check
   test:
@@ -127,7 +127,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }
@@ -149,7 +149,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
       - run: cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
       - if: always()
@@ -163,7 +163,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - run: rustup toolchain install "$FUZZ_NIGHTLY" --profile minimal --component rust-src
-      - uses: taiki-e/install-action@ab49d3c64680143e184118bed66a46419fc15519 # v2.90.5
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with: { tool: 'cargo-fuzz@${{ env.CARGO_FUZZ_VERSION }}' }
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with: { key: fuzz }
