@@ -9,6 +9,23 @@ fn assert_error(output: std::process::Output, status: i32, code: &str) {
     assert_eq!(e["error"], code);
 }
 #[test]
+fn get_applies_explicit_reading_and_all_matches_to_stdout() {
+    let root = tempfile::tempdir().unwrap();
+    let page = root.path().join("page.html");
+    std::fs::write(&page, b"<p id='a'>first</p><p id='b'>second</p>").unwrap();
+    let output = support::command()
+        .args(["get", "p", "--all", "--read", "attr:id", "-o", "-"])
+        .arg(page)
+        .current_dir(root.path())
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(output.stdout, b"[\"a\",\"b\"]\n");
+    assert!(output.stderr.is_empty());
+    assert!(!root.path().join("-").exists());
+}
+
+#[test]
 fn contract_paths_inline_json_and_literal_stdin_have_distinct_operands() {
     use std::io::Write;
     let root = tempfile::tempdir().unwrap();
@@ -178,4 +195,54 @@ fn implicit_terminal_stdin_is_refused() {
         String::from_utf8_lossy(&o.stdout).contains("invalid_request"),
         "{o:?}"
     );
+}
+
+#[cfg(unix)]
+#[test]
+fn explicit_terminal_stdin_reaches_the_input_byte_limit() {
+    use std::{
+        io::Write,
+        time::{Duration, Instant},
+    };
+
+    let mut command = std::process::Command::new("script");
+    #[cfg(target_os = "macos")]
+    command
+        .args(["-q", "/dev/null"])
+        .arg(support::binary())
+        .args(["get", "p", "-", "--max-input-bytes", "0"]);
+    #[cfg(not(target_os = "macos"))]
+    {
+        let binary = support::binary().to_string_lossy().replace('\'', "'\\''");
+        command.args([
+            "-q",
+            "-c",
+            &format!("'{binary}' get p - --max-input-bytes 0"),
+            "/dev/null",
+        ]);
+    }
+    let mut child = command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut input = child.stdin.take().unwrap();
+    input.write_all(b"x\n").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while child.try_wait().unwrap().is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let timed_out = child.try_wait().unwrap().is_none();
+    if timed_out {
+        child.kill().unwrap();
+    }
+    drop(input);
+    let output = child.wait_with_output().unwrap();
+    assert!(!timed_out, "{output:?}");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("\"error\":\"limit_exceeded\""),
+        "{output:?}"
+    );
+    assert!(stdout.contains("\"limit\":\"input_bytes\""), "{output:?}");
 }

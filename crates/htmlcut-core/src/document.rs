@@ -212,16 +212,14 @@ fn feed(
 }
 
 fn utf8_feed_end(text: &str, maximum: usize) -> usize {
-    let mut end = maximum.min(text.len());
-    // The caller has nonempty text. A split stays within the byte ceiling,
-    // except test feeds too small to contain their first Unicode scalar.
-    while end > 0 && !text.is_char_boundary(end) {
-        end -= 1;
-    }
+    // Stay within the byte ceiling unless a test feed is too small to
+    // contain its first Unicode scalar.
+    let end = text.floor_char_boundary(maximum);
     if end == 0 {
-        end = text.chars().next().unwrap().len_utf8();
+        text.chars().next().unwrap().len_utf8()
+    } else {
+        end
     }
-    end
 }
 
 fn decode(source: Input<'_>, clock: &Clock) -> Result<(String, &'static Encoding), Error> {
