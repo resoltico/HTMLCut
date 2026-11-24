@@ -12,30 +12,33 @@ fn direct(writer: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
         result => result,
     }
 }
+#[cfg(not(windows))]
 fn device(path: &Path) -> bool {
     #[cfg(unix)]
     {
         path.as_os_str().as_encoded_bytes().starts_with(b"/dev/")
     }
-    #[cfg(windows)]
-    {
-        let text = path.to_string_lossy();
-        if text.starts_with(r"\\.\") {
-            return true;
-        }
-        let name = path.file_name().unwrap_or_default().to_string_lossy();
-        let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
-        matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
-            || ["COM", "LPT"].iter().any(|prefix| {
-                stem.strip_prefix(prefix)
-                    .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
-            })
-    }
-    #[cfg(not(any(unix, windows)))]
+    #[cfg(not(unix))]
     {
         let _ = path;
         false
     }
+}
+#[cfg(windows)]
+use self::windows_device as device;
+#[cfg(windows)]
+fn windows_device(path: &Path) -> bool {
+    let text = path.to_string_lossy();
+    if text.starts_with(r"\\.\") {
+        return true;
+    }
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    let stem = name.split('.').next().unwrap_or("").to_ascii_uppercase();
+    matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ["COM", "LPT"].iter().any(|prefix| {
+            stem.strip_prefix(prefix)
+                .is_some_and(|n| n.len() == 1 && matches!(n.as_bytes()[0], b'1'..=b'9'))
+        })
 }
 fn file(path: &Path, bytes: &[u8]) -> io::Result<()> {
     if device(path) {
@@ -101,4 +104,82 @@ pub(crate) fn write(bytes: &[u8], path: Option<&Path>) -> Result<(), Error> {
             .unwrap_or_else(|| "-".into()),
         detail: e.to_string(),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn direct_only_suppresses_broken_pipe_on_write_or_flush() {
+        struct FailingWriter {
+            kind: io::ErrorKind,
+            fail_on_write: bool,
+        }
+
+        impl Write for FailingWriter {
+            fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+                if self.fail_on_write {
+                    Err(self.kind.into())
+                } else {
+                    Ok(bytes.len())
+                }
+            }
+
+            fn flush(&mut self) -> io::Result<()> {
+                Err(self.kind.into())
+            }
+        }
+
+        for fail_on_write in [true, false] {
+            for kind in [io::ErrorKind::BrokenPipe, io::ErrorKind::PermissionDenied] {
+                let result = direct(
+                    &mut FailingWriter {
+                        kind,
+                        fail_on_write,
+                    },
+                    b"x",
+                );
+                if kind == io::ErrorKind::BrokenPipe {
+                    result.unwrap();
+                } else {
+                    assert_eq!(result.unwrap_err().kind(), kind);
+                }
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_device_names_are_classified_lexically() {
+        for name in [
+            r"\\.\custom-device",
+            "con",
+            "PRN",
+            "AUX",
+            r"folder\nul.txt",
+            "COM1",
+            "lpt9.log",
+        ] {
+            assert!(windows_device(Path::new(name)), "{name}");
+        }
+        for name in [
+            "ordinary.txt",
+            "COM",
+            "COM0",
+            "COM10",
+            "COM1x",
+            "LPTx",
+            "NULx",
+        ] {
+            assert!(!windows_device(Path::new(name)), "{name}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dev_directory_is_classified_lexically() {
+        assert!(device(Path::new("/dev/htmlcut-test-destination")));
+        assert!(!device(Path::new("dev/htmlcut-test-destination")));
+    }
 }

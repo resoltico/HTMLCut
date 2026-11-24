@@ -89,6 +89,38 @@ pub(crate) fn contract(path: &Path, stop: &Stop) -> Result<Contract, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_retries_interrupted_reads_and_propagates_other_errors() {
+        struct ReadThenRetry(Option<io::ErrorKind>, io::Cursor<&'static [u8]>);
+
+        impl Read for ReadThenRetry {
+            fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+                match self.0.take() {
+                    Some(kind) => Err(kind.into()),
+                    None => self.1.read(buf),
+                }
+            }
+        }
+
+        let stop = Stop::none();
+        let mut interrupted =
+            ReadThenRetry(Some(io::ErrorKind::Interrupted), io::Cursor::new(b"x"));
+        assert_eq!(
+            bounded(&mut interrupted, "snapshot", 1, false, &stop).unwrap(),
+            b"x"
+        );
+
+        let kind = io::ErrorKind::PermissionDenied;
+        let mut refused = ReadThenRetry(Some(kind), io::Cursor::new(b"x"));
+        assert!(matches!(
+            bounded(&mut refused, "snapshot", 1, false, &stop),
+            Err(Error::InputUnreadable { file, detail })
+                if file == "snapshot" && detail == io::Error::from(kind).to_string()
+        ));
+        assert_eq!(refused.1.position(), 0);
+    }
+
     #[test]
     fn bounded_reads_stop_at_one_excess_byte_and_check_cancellation() {
         let mut source = io::Cursor::new(vec![0; 100_000]);

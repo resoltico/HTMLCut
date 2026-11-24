@@ -280,6 +280,25 @@ impl Case {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_oracles_explain_why_a_non_object_is_invalid() {
+        let error = serde_json::from_str::<ErrorOracle>("[]").err().unwrap();
+        assert!(error.to_string().contains("expected an error-facts object"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn optional_fixture_paths_propagate_errors_from_non_directory_parents() {
+        let file = tempfile::NamedTempFile::new().unwrap();
+        let invalid = file.path().join("options.json");
+        assert_eq!(
+            fs::symlink_metadata(&invalid).unwrap_err().kind(),
+            std::io::ErrorKind::NotADirectory
+        );
+        assert!(std::panic::catch_unwind(|| optional(&invalid)).is_err());
+    }
+
     #[test]
     fn duplicate_error_discriminants_and_facts_refuse_without_touching_contract_text() {
         let root = tempfile::tempdir().unwrap();
@@ -351,8 +370,8 @@ mod tests {
         for kind in ["contract", "outline"] {
             fs::create_dir(root.path().join(kind)).unwrap();
         }
-        let valid = root.path().join("contract/valid");
-        fs::create_dir(&valid).unwrap();
+        let valid = root.path().join("contract/nested/valid");
+        fs::create_dir_all(&valid).unwrap();
         fs::write(valid.join("page.html"), b"<p>x</p>").unwrap();
         fs::write(valid.join("contract.json"), b"\"p\"").unwrap();
         fs::write(valid.join("expected.json"), b"\"x\"\n").unwrap();
@@ -362,7 +381,11 @@ mod tests {
         fs::write(outline.join("page.html"), b"<p>x</p>").unwrap();
         fs::write(outline.join("outline.json"), b"{}").unwrap();
         fs::write(outline.join("expected.txt"), b"literal").unwrap();
-        assert_eq!(discover(root.path()).len(), 2);
+        let cases = discover(root.path());
+        assert_eq!(
+            cases.iter().map(Case::identity).collect::<Vec<_>>(),
+            ["contract/nested/valid", "outline/valid"]
+        );
         fs::remove_file(valid.join("expected.json")).unwrap();
         fs::write(
             valid.join("options.json"),

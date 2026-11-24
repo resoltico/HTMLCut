@@ -11,7 +11,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && 'extended' || 'standard' }}
   cancel-in-progress: true
 env:
   CARGO_TERM_COLOR: always
@@ -146,15 +146,48 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, conformance]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with: { persist-credentials: false }
       - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
         with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
-      - run: cargo mutants --workspace --timeout 300 -j 2 --cargo-arg=--locked
+      - name: Test a workspace mutation shard
+        if: matrix.shard != 'conformance'
+        env:
+          SHARD_INDEX: ${{ matrix.shard }}
+          MUTATION_JOBS: ${{ strategy.job-total }}
+        run: >-
+          cargo mutants --workspace --exclude 'crates/htmlcut-conformance/**'
+          --exclude-re windows_device --shard "$SHARD_INDEX/$((MUTATION_JOBS - 1))"
+          --sharding round-robin
+          --timeout-multiplier 5 -j 2 --cargo-arg=--locked
+      - name: Test conformance helper mutations against their consumers
+        if: matrix.shard == 'conformance'
+        # cargo-mutants times the helper alone for this filtered baseline.
+        run: >-
+          cargo mutants -p htmlcut-conformance --test-workspace=true
+          --minimum-test-timeout 120 --timeout-multiplier 5 -j 2 --cargo-arg=--locked
       - if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with: { name: mutants-out, path: mutants.out, retention-days: 14 }
+        with: { name: 'mutants-${{ matrix.shard }}', path: mutants.out, retention-days: 14 }
+  mutants-windows:
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: taiki-e/install-action@fe3acb53a98b62c772db35de75ce0e4595e7ca8c # v2.90.8
+        with: { tool: 'cargo-mutants@${{ env.CARGO_MUTANTS_VERSION }}' }
+      - run: >-
+          cargo mutants -p htmlcut --file crates/htmlcut/src/output.rs --re windows_device
+          --timeout-multiplier 5 -j 2 --cargo-arg=--locked
+      - if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: mutants-windows, path: mutants.out, retention-days: 14 }
   fuzz:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
@@ -181,7 +214,7 @@ jobs:
   required-checks:
     name: Check
     if: always()
-    needs: [check, test, panic-abort, fuzz-smoke, mutants, fuzz]
+    needs: [check, test, panic-abort, fuzz-smoke, mutants, mutants-windows, fuzz]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -192,6 +225,7 @@ jobs:
                 needs.test.result == 'success' &&
                 needs.panic-abort.result == 'success' &&
                 needs.fuzz-smoke.result == 'success' &&
+                needs.mutants-windows.result == 'success' &&
                 (needs.mutants.result == 'success' || needs.mutants.result == 'skipped') &&
                 (needs.fuzz.result == 'success' || needs.fuzz.result == 'skipped') }}
         run: test "$CHECKS_PASSED" = true
